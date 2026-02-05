@@ -172,11 +172,11 @@ def compare_runs(baseline_path, evolved_path, output_path):
 
     base_labs = sum(base_by_id[_id]["scores"].get("Laboratory Tests", 0) for _id in common_ids)
     evol_labs = sum(evol_by_id[_id]["scores"].get("Laboratory Tests", 0) for _id in common_ids)
-    lines.append(f"- Lab score total: {base_labs} -> {evol_labs} ({evol_labs - base_labs:+d})")
+    lines.append(f"- Lab score total: {base_labs:.1f} -> {evol_labs:.1f} ({evol_labs - base_labs:+.1f})")
 
     base_img = sum(base_by_id[_id]["scores"].get("Imaging", 0) for _id in common_ids)
     evol_img = sum(evol_by_id[_id]["scores"].get("Imaging", 0) for _id in common_ids)
-    lines.append(f"- Imaging score total: {base_img} -> {evol_img} ({evol_img - base_img:+d})")
+    lines.append(f"- Imaging score total: {base_img:.1f} -> {evol_img:.1f} ({evol_img - base_img:+.1f})")
 
     report = "\n".join(lines)
 

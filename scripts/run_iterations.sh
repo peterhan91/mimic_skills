@@ -38,7 +38,7 @@ print_performance() {
     echo ""
     echo "  v${V} Performance (baseline -> evolved):"
     echo "  ---------------------------------------------------------------"
-    printf "  %-16s %-14s %-14s %-10s %-10s\n" "Pathology" "Diagnosis" "PE First" "Labs" "Imaging"
+    printf "  %-16s %-22s %-22s %-22s %-22s\n" "Pathology" "Diagnosis" "PE First" "Labs" "Imaging"
     echo "  ---------------------------------------------------------------"
     for P in "${PATHOLOGIES[@]}"; do
         local COMP="$COMP_DIR/v${V}_vs_baseline_${P}.md"
@@ -48,7 +48,7 @@ print_performance() {
             PE=$(grep "PE first" "$COMP" 2>/dev/null | sed 's/- PE first: //')
             LABS=$(grep "Lab score" "$COMP" 2>/dev/null | sed 's/- Lab score total: //')
             IMG=$(grep "Imaging score" "$COMP" 2>/dev/null | sed 's/- Imaging score total: //')
-            printf "  %-16s %-14s %-14s %-10s %-10s\n" "$P" "$DX" "$PE" "$LABS" "$IMG"
+            printf "  %-16s %-22s %-22s %-22s %-22s\n" "$P" "$DX" "$PE" "$LABS" "$IMG"
         fi
     done
     echo "  ---------------------------------------------------------------"
@@ -91,31 +91,80 @@ echo "  Total time: ${TOTAL_HR}h ${TOTAL_MIN}m"
 echo "============================================================"
 echo ""
 
-# Diagnosis accuracy across versions
-echo "  Diagnosis Accuracy Trend (evolved):"
-echo "  ---------------------------------------------------------------"
-printf "  %-16s" "Pathology"
-for V in $(seq "$START" "$END"); do
-    printf " %-8s" "v${V}"
-done
-echo ""
-echo "  ---------------------------------------------------------------"
-for P in "${PATHOLOGIES[@]}"; do
-    printf "  %-16s" "$P"
+# Cross-version trend tables with percentage change
+# Helper: extract baseline value from comparison file
+extract_base_val() {
+    local KEY="$1" FILE="$2"
+    grep "$KEY" "$FILE" 2>/dev/null | head -1 | sed "s/.*: \(.*\) -> .*/\1/"
+}
+
+# Print cross-version trend for a metric
+# Args: TITLE GREP_KEY TYPE(binary|score)
+print_metric_trend() {
+    local TITLE="$1" GREP_KEY="$2" TYPE="$3"
+
+    echo "  ${TITLE}:"
+    echo "  --------------------------------------------------------------------------"
+    printf "  %-16s %-12s" "Pathology" "Baseline"
     for V in $(seq "$START" "$END"); do
-        COMP="$COMP_DIR/v${V}_vs_baseline_${P}.md"
-        if [ -f "$COMP" ]; then
-            # Extract just the evolved score (e.g., "3/10" from "3/10 -> 5/10 (+2)")
-            EVOLVED_DX=$(grep "Diagnosis accuracy" "$COMP" 2>/dev/null | sed 's/.*-> \([^ ]*\).*/\1/')
-            printf " %-8s" "$EVOLVED_DX"
-        else
-            printf " %-8s" "-"
-        fi
+        printf " %-16s" "v${V}"
     done
     echo ""
-done
-echo "  ---------------------------------------------------------------"
-echo ""
+    echo "  --------------------------------------------------------------------------"
+
+    for P in "${PATHOLOGIES[@]}"; do
+        local BASE_STR="-"
+        for V in $(seq "$START" "$END"); do
+            local COMP="$COMP_DIR/v${V}_vs_baseline_${P}.md"
+            if [ -f "$COMP" ]; then
+                BASE_STR=$(extract_base_val "$GREP_KEY" "$COMP")
+                [ -z "$BASE_STR" ] && BASE_STR="-"
+                break
+            fi
+        done
+
+        printf "  %-16s %-12s" "$P" "$BASE_STR"
+
+        for V in $(seq "$START" "$END"); do
+            local COMP="$COMP_DIR/v${V}_vs_baseline_${P}.md"
+            local CELL="-"
+            if [ -f "$COMP" ]; then
+                local LINE
+                LINE=$(grep "$GREP_KEY" "$COMP" 2>/dev/null | head -1)
+                if [ -n "$LINE" ]; then
+                    if [ "$TYPE" = "binary" ]; then
+                        # Binary: extract counts, compute percentage change
+                        local EVOL_CT BASE_CT N_PAT
+                        EVOL_CT=$(echo "$LINE" | sed 's/.*-> \([0-9]*\)\/.*/\1/')
+                        BASE_CT=$(echo "$LINE" | sed "s/.*: \([0-9]*\)\/.*/\1/")
+                        N_PAT=$(echo "$LINE" | sed 's/.*\/\([0-9]*\) .*/\1/')
+                        if [ "${N_PAT:-0}" -gt 0 ] 2>/dev/null; then
+                            local DIFF=$(( EVOL_CT - BASE_CT ))
+                            local DIFF_PP=$(( DIFF * 100 / N_PAT ))
+                            if [ "$DIFF_PP" -ge 0 ]; then
+                                CELL="${EVOL_CT}/${N_PAT} (+${DIFF_PP}%)"
+                            else
+                                CELL="${EVOL_CT}/${N_PAT} (${DIFF_PP}%)"
+                            fi
+                        fi
+                    else
+                        # Score: show evolved + delta as-is
+                        CELL=$(echo "$LINE" | sed 's/.*-> //')
+                    fi
+                fi
+            fi
+            printf " %-16s" "$CELL"
+        done
+        echo ""
+    done
+    echo "  --------------------------------------------------------------------------"
+    echo ""
+}
+
+print_metric_trend "Diagnosis Accuracy" "Diagnosis accuracy" "binary"
+print_metric_trend "PE First" "PE first" "binary"
+print_metric_trend "Lab Score (total)" "Lab score total" "score"
+print_metric_trend "Imaging Score (total)" "Imaging score total" "score"
 
 # Skills summary
 echo "  Skills:"

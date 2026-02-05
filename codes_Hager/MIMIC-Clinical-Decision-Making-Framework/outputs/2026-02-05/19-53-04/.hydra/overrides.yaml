@@ -1,9 +1,0 @@
-- pathology=cholecystitis
-- model=MedGemma4B
-- base_mimic=/home/than/DeepLearning/mimic_skills/data_splits/cholecystitis
-- base_models=/home/than/.cache/huggingface/hub
-- lab_test_mapping_path=/home/than/DeepLearning/mimic_skills/MIMIC-CDM-IV/lab_test_mapping.pkl
-- local_logging_dir=/home/than/DeepLearning/mimic_skills/results
-- summarize=True
-- skill_path=/home/than/DeepLearning/mimic_skills/skills/v1/acute_abdominal_pain.md
-- run_descr=_v1_train10

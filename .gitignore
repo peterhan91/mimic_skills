@@ -31,11 +31,16 @@ Thumbs.db
 # MIMIC-CDM-III/
 # MIMIC-CDM-IV/
 
-# Results from GPU server runs
+# Experiment intermediate outputs
 results/
-
-# Trajectories (generated, can be large)
+results_medgemma_backup/
 trajectories/
+comparisons/
+logs/
+skills/
+
+# Hydra outputs
+codes_Hager/MIMIC-Clinical-Decision-Making-Framework/outputs/
 
 # Jupyter
 .ipynb_checkpoints/
