@@ -15,7 +15,7 @@ set -euo pipefail
 START="${1:-1}"
 END="${2:-5}"
 MODEL="${3:-Qwen3_30B_A3B}"
-EVOLVER_MODEL="${4:-claude-sonnet-4-20250514}"
+EVOLVER_MODEL="${4:-claude-opus-4-6}"
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 COMP_DIR="$PROJECT_DIR/comparisons"

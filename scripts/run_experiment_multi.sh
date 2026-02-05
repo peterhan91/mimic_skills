@@ -20,7 +20,7 @@ set -euo pipefail
 #
 # Examples:
 #   bash scripts/run_experiment_multi.sh v2 Qwen3_30B_A3B
-#   bash scripts/run_experiment_multi.sh v3 Qwen3_30B_A3B claude-sonnet-4-20250514
+#   bash scripts/run_experiment_multi.sh v3 Qwen3_30B_A3B claude-opus-4-6
 #   bash scripts/run_experiment_multi.sh v2 MedGemma4B
 # ============================================================
 
@@ -29,7 +29,7 @@ set -euo pipefail
 # ============================================================
 VERSION="${1:-v1}"
 MODEL="${2:-Qwen3_30B_A3B}"
-EVOLVER_MODEL="${3:-claude-sonnet-4-20250514}"
+EVOLVER_MODEL="${3:-claude-opus-4-6}"
 SPLIT="train"
 PATHOLOGIES=("appendicitis" "cholecystitis" "diverticulitis" "pancreatitis")
 

@@ -13,7 +13,7 @@ set -euo pipefail
 #
 # Examples:
 #   bash scripts/run_experiment.sh cholecystitis v1
-#   bash scripts/run_experiment.sh appendicitis v2 claude-sonnet-4-20250514
+#   bash scripts/run_experiment.sh appendicitis v2 claude-opus-4-6
 # ============================================================
 
 # ============================================================
@@ -21,7 +21,7 @@ set -euo pipefail
 # ============================================================
 PATHOLOGY="${1:-cholecystitis}"
 VERSION="${2:-v1}"
-EVOLVER_MODEL="${3:-claude-sonnet-4-20250514}"
+EVOLVER_MODEL="${3:-claude-opus-4-6}"
 SPLIT="train"
 MODEL="MedGemma4B"
 

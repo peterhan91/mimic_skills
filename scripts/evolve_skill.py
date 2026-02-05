@@ -8,7 +8,7 @@ from discharge summaries, and generates a general clinical reasoning skill.
 Usage (single pathology):
     python scripts/evolve_skill.py \
         --trajectories trajectories/baseline_cholecystitis_train10.json \
-        --model claude-sonnet-4-20250514 \
+        --model claude-opus-4-6 \
         --output skills/v1/acute_abdominal_pain.md
 
 Usage (multiple pathologies — recommended):
@@ -17,7 +17,7 @@ Usage (multiple pathologies — recommended):
                        trajectories/baseline_cholecystitis_train10.json \
                        trajectories/baseline_diverticulitis_train10.json \
                        trajectories/baseline_pancreatitis_train10.json \
-        --model claude-sonnet-4-20250514 \
+        --model claude-opus-4-6 \
         --output skills/v2/acute_abdominal_pain.md
 
 Optionally feed a previous skill for iterative refinement:
@@ -317,7 +317,7 @@ def main():
         help="Path(s) to trajectory JSON(s) from extract_trajectories.py"
     )
     parser.add_argument(
-        "--model", type=str, default="claude-sonnet-4-20250514",
+        "--model", type=str, default="claude-opus-4-6",
         help="Anthropic model to use for skill generation"
     )
     parser.add_argument(
