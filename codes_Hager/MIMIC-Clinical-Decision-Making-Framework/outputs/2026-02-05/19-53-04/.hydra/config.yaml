@@ -1,0 +1,55 @@
+pathology: cholecystitis
+agent: ZeroShot
+prompt_template: VANILLA
+summarize: true
+fewshot: false
+include_ref_range: false
+bin_lab_results: false
+bin_lab_results_abnormal: false
+provide_diagnostic_criteria: false
+include_tool_use_examples: false
+abbreviated: true
+self_consistency: false
+only_abnormal_labs: false
+seed: 2023
+local_logging: true
+run_descr: _v1_train10
+first_patient: null
+patient_list_path: null
+order: pli
+diagnostic_criteria: null
+rr_name: RR
+diag_crit_writer_openai_api_key: null
+confirm_diagnosis: false
+save_probabilities: false
+skill_path: /home/than/DeepLearning/mimic_skills/skills/v1/acute_abdominal_pain.md
+skill_inject: examples
+base_mimic: /home/than/DeepLearning/mimic_skills/data_splits/cholecystitis
+base_models: /home/than/.cache/huggingface/hub
+lab_test_mapping_path: /home/than/DeepLearning/mimic_skills/MIMIC-CDM-IV/lab_test_mapping.pkl
+local_logging_dir: /home/than/DeepLearning/mimic_skills/results
+openai_api_key: null
+model_name: google/medgemma-1.5-4b-it
+max_context_length: 8192
+exllama: false
+system_tag_start: '<bos><start_of_turn>user
+
+  '
+system_tag_end: '<end_of_turn>
+
+  '
+user_tag_start: '<start_of_turn>user
+
+  '
+user_tag_end: '<end_of_turn>
+
+  '
+ai_tag_start: '<start_of_turn>model
+
+  '
+ai_tag_end: '<end_of_turn>
+
+  '
+stop_words:
+- <end_of_turn>
+- <eos>

@@ -23,6 +23,9 @@ env/
 .DS_Store
 Thumbs.db
 
+# Secrets
+.env
+
 # Data — large pkl files and raw MIMIC data
 # *.pkl
 # MIMIC-CDM-III/
