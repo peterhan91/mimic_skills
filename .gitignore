@@ -26,15 +26,22 @@ Thumbs.db
 # Secrets
 .env
 
-# Data — large pkl files and raw MIMIC data
-# *.pkl
-# MIMIC-CDM-III/
-# MIMIC-CDM-IV/
+# Unused data (not needed by pipeline)
+MIMIC-CDM-III/
+MIMIC-CDM-IV/*_hadm_info_first_diag.pkl
+!MIMIC-CDM-IV/appendicitis_hadm_info_first_diag.pkl
+!MIMIC-CDM-IV/cholecystitis_hadm_info_first_diag.pkl
+!MIMIC-CDM-IV/diverticulitis_hadm_info_first_diag.pkl
+!MIMIC-CDM-IV/pancreatitis_hadm_info_first_diag.pkl
+codes_Hager/MIMIC-Clinical-Decision-Making-Analysis/
+codes_Hager/MIMIC-Clinical-Decision-Making-Dataset/
+data_splits/*/remaining.pkl
 
 # Experiment intermediate outputs
 results/
 results_medgemma_backup/
 trajectories/
+traces/
 comparisons/
 logs/
 skills/
