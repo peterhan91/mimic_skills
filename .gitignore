@@ -41,6 +41,9 @@ data_splits/*/remaining.pkl
 EvoTest/
 evotest-*.zip
 
+# EvoTest state (checkpoint files)
+evotest_state/
+
 # Experiment intermediate outputs
 results/
 results_medgemma_backup/
@@ -52,6 +55,10 @@ skills/
 
 # Hydra outputs
 codes_Hager/MIMIC-Clinical-Decision-Making-Framework/outputs/
+
+# Runtime debug logs (written by nlp.py fuzzy matching)
+codes_Hager/MIMIC-Clinical-Decision-Making-Framework/no_canonical_names.txt
+codes_Hager/MIMIC-Clinical-Decision-Making-Framework/no_diagnostic_criteria.txt
 
 # Jupyter
 .ipynb_checkpoints/
