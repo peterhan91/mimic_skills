@@ -37,6 +37,10 @@ codes_Hager/MIMIC-Clinical-Decision-Making-Analysis/
 codes_Hager/MIMIC-Clinical-Decision-Making-Dataset/
 data_splits/*/remaining.pkl
 
+# EvoTest reference (forked, not part of this repo)
+EvoTest/
+evotest-*.zip
+
 # Experiment intermediate outputs
 results/
 results_medgemma_backup/

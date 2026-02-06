@@ -216,6 +216,185 @@ Compare on 100 held-out admissions. This is the number we report.
 
 ---
 
+## Automated EvoTest Loop (`scripts/evotest_clinical.py`)
+
+The manual Steps 1-6 above work but require human effort per iteration.
+`evotest_clinical.py` automates the entire loop using EvoTest-style evolutionary
+optimization with UCB tree-based exploration and regression protection.
+
+**One episode** = run agent on all 4 pathologies x 10 train patients (40 total)
+with a given skill → evaluate → extract trajectories → compute composite score.
+The Evolver (Opus) analyzes failures and generates an improved skill. UCB selects
+the best parent for the next evolution — if episode 4 regresses, episode 5 can
+branch from episode 3 instead of building on a bad skill.
+
+### Prerequisites
+
+1. **Data splits** in place (already done):
+   ```
+   data_splits/{pathology}/train.pkl                         # 10 patients each
+   data_splits/{pathology}/{pathology}_hadm_info_first_diag.pkl  # symlink for Hager
+   MIMIC-CDM-IV/lab_test_mapping.pkl
+   ```
+
+2. **ANTHROPIC_API_KEY** — set in `.env` at project root or export it:
+   ```bash
+   echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env
+   ```
+
+3. **GPU server** — the agent model (Qwen3-30B-A3B, Llama 3.3 70B, etc.) runs
+   locally via HuggingFace and needs GPU. The script calls `run.py` as a
+   subprocess, so run `evotest_clinical.py` on the GPU server itself.
+
+### Quick Validation (Dry Run)
+
+Prints all subprocess commands and the Evolver prompt without executing anything.
+Use this to verify paths are correct before committing GPU time:
+
+```bash
+python scripts/evotest_clinical.py --dry-run --episodes 2
+```
+
+### Running the Full Loop
+
+```bash
+# Standard run: 10 episodes, Qwen3-30B-A3B, Opus as Evolver
+python scripts/evotest_clinical.py \
+    --episodes 10 \
+    --model Qwen3_30B_A3B \
+    --evolver-model claude-opus-4-6 \
+    --annotate-clinical True
+```
+
+Each episode takes ~20-40 min on GPU (40 patients), so 10 episodes = ~3-7 hours.
+
+### Warm-Starting from an Existing Skill
+
+If you already have a skill from `run_experiment_multi.sh` (e.g., v2), use it as
+the seed for episode 0 instead of running a cold baseline. Saves ~2 episodes of
+convergence:
+
+```bash
+python scripts/evotest_clinical.py \
+    --episodes 10 \
+    --model Qwen3_30B_A3B \
+    --initial-skill skills/v2/acute_abdominal_pain.md
+```
+
+### Resuming After Interruption
+
+State is saved to `evotest_state/state.json` after every episode. Resume from
+where you left off:
+
+```bash
+python scripts/evotest_clinical.py --resume --episodes 15
+```
+
+### Recommended Settings
+
+| Setting | Value | Why |
+|---|---|---|
+| `--episodes` | **10-15** | Diminishing returns after ~10 |
+| `--model` | **Qwen3_30B_A3B** | Best configured local model; only 3B active params so fast |
+| `--evolver-model` | **claude-opus-4-6** | Strongest Evolver; best clinical reasoning |
+| `--annotate-clinical` | **True** | Lab annotations (Approach 3) — proven to help |
+| `--initial-skill` | a v1/v2 skill if available | Warm-start beats cold-start |
+| `--exploration-constant` | **1.0** (default) | Standard UCB; lower to 0.5 for more exploitation |
+| `--depth-constant` | **0.8** (default) | Depth decay for exploration |
+| `--drop-threshold` | **1.0** (default) | ~15% of max score (6.5); prevents catastrophic regression |
+
+### All CLI Options
+
+```
+python scripts/evotest_clinical.py --help
+
+--episodes N           Total episodes to run (default: 10)
+--model NAME           Agent model (default: Qwen3_30B_A3B)
+--evolver-model NAME   Anthropic model for Evolver (default: claude-opus-4-6)
+--annotate-clinical    Enable clinical lab annotations (default: True)
+--exploration-constant UCB exploration constant c (default: 1.0)
+--depth-constant       UCB depth decay alpha (default: 0.8)
+--drop-threshold       Force-best-after-drop threshold (default: 1.0)
+--force-best-after-drop / --no-force-best-after-drop
+--initial-skill PATH   Seed skill for episode 0 (optional)
+--resume               Resume from evotest_state/state.json
+--dry-run              Print commands without executing
+```
+
+### What to Expect
+
+| Phase | Diagnosis | PE First | Notes |
+|---|---|---|---|
+| Episode 0 (baseline) | ~40-50% | ~50% | No skill, just the raw agent |
+| Episodes 1-3 | ~55-65% | ~80-90% | Biggest gains from "PE first" + lab ordering rules |
+| Episodes 4-7 | ~65-75% | ~85-90% | Diminishing returns; lab/imaging scores improve |
+| Episodes 8-10+ | ~70-80% | ~85-90% | Plateau; UCB explores alternative branches |
+
+### Output Files
+
+```
+skills/evo/
+  episode_0.md              # Sanitized skill (episode 0 = baseline or seed)
+  episode_0_raw.md          # Raw skill before sanitization
+  episode_1.md              # Evolved skill from episode 1
+  ...
+trajectories/
+  evo_ep0_appendicitis.json # Per-pathology trajectory JSON
+  evo_ep0_cholecystitis.json
+  ...
+evotest_state/
+  state.json                # Full UCB tree + scores (for --resume)
+```
+
+### Final Evaluation on Test Set
+
+After the loop completes, the best skill path is printed (e.g.,
+`Best skill: skills/evo/episode_7.md`). Evaluate it on the held-out 100 patients
+per pathology:
+
+```bash
+BEST_SKILL=skills/evo/episode_7.md  # from the script's final output
+
+for PATHOLOGY in appendicitis cholecystitis diverticulitis pancreatitis; do
+    # Point to test split
+    cp data_splits/$PATHOLOGY/test.pkl \
+       data_splits/$PATHOLOGY/${PATHOLOGY}_hadm_info_first_diag.pkl
+
+    # Run with best skill
+    cd codes_Hager/MIMIC-Clinical-Decision-Making-Framework
+    python run.py \
+        pathology=$PATHOLOGY \
+        model=Qwen3_30B_A3B \
+        base_mimic=../../data_splits/$PATHOLOGY \
+        base_models=$HF_HOME \
+        lab_test_mapping_path=../../MIMIC-CDM-IV/lab_test_mapping.pkl \
+        local_logging_dir=../../results \
+        summarize=True \
+        annotate_clinical=True \
+        skill_path=../../$BEST_SKILL \
+        run_descr=_evotest_best_test100
+    cd ../..
+
+    # Evaluate
+    python scripts/evaluate_run.py \
+        --results_dir $(ls -td results/*${PATHOLOGY}*_evotest_best_test100* | head -1) \
+        --pathology $PATHOLOGY \
+        --patient_data data_splits/$PATHOLOGY/test.pkl
+done
+```
+
+### How EvoTest Differs from Linear `run_iterations.sh`
+
+| Aspect | `run_iterations.sh` (v1→v2→v3) | `evotest_clinical.py` |
+|---|---|---|
+| Exploration | Linear chain only | UCB tree — can branch and backtrack |
+| Regression protection | None — v3 builds on v2 even if v2 was bad | Force-best-after-drop reverts to best node |
+| Evolver context | Sees only previous version's trajectories | Sees evolution history, failed skills, per-metric targets |
+| Skill selection | Always uses the latest | UCB selects highest-potential parent |
+| Resumability | Must restart from scratch | `--resume` continues from checkpoint |
+
+---
+
 ## What Claude Code Does vs What GPU Server Does
 
 ### Claude Code (Local Mac)
@@ -268,103 +447,21 @@ git pull
 
 ---
 
-## Scripts to Write (before starting experiments)
+## Scripts
 
-### Priority 1: Required for Step 1
-
-**`scripts/prepare_split_for_hager.py`** — Makes our split pkl loadable by
-Hager's `run.py` without modifying run.py:
-
-```python
-"""
-Copies train.pkl or test.pkl as {pathology}_hadm_info_first_diag.pkl
-so Hager's framework can load it directly.
-
-Usage:
-  python scripts/prepare_split_for_hager.py --pathology appendicitis --split train
-  python scripts/prepare_split_for_hager.py --pathology appendicitis --split test
-"""
-```
-
-### Priority 2: Required for Step 2
-
-**`scripts/extract_trajectories.py`** — Parses Hager's output pkls into
-readable JSON for the Evolver to analyze:
-
-```python
-"""
-Extracts trajectory transcripts + PathologyEvaluator scores from results.
-
-Usage:
-  python scripts/extract_trajectories.py \
-    --results_dir results/appendicitis_ZeroShot_*/ \
-    --output trajectories/episode_1.json
-
-Output format:
-{
-  "admissions": [
-    {
-      "hadm_id": 29668508,
-      "trajectory": [
-        {"thought": "...", "action": "Physical Examination", "observation": "..."},
-        {"thought": "...", "action": "Laboratory Tests", "action_input": [...], "observation": "..."},
-        ...
-      ],
-      "prediction": "Final Diagnosis: Acute Appendicitis\nTreatment: ...",
-      "scores": {"Diagnosis": 1, "Physical Examination": 1, "Laboratory Tests": 1, ...},
-      "answers": {"Diagnosis": "Acute Appendicitis", "Treatment": "...", ...}
-    },
-    ...
-  ],
-  "aggregate": {
-    "diagnosis_accuracy": 0.7,
-    "pe_first_rate": 0.5,
-    ...
-  }
-}
-"""
-```
-
-### Priority 3: Required for Step 5
-
-**`scripts/compare_runs.py`** — Side-by-side comparison of two runs:
-
-```python
-"""
-Compares two evaluation runs and outputs a markdown summary.
-
-Usage:
-  python scripts/compare_runs.py \
-    --baseline results/appendicitis_*_baseline/ \
-    --evolved results/appendicitis_*_v1/ \
-    --output comparisons/v1_vs_baseline.md
-"""
-```
-
-### Priority 4: For automated EvoTest loop (later)
-
-**`scripts/evotest_loop.py`** — Orchestrates the full Act-Evolve cycle:
-
-```python
-"""
-Automated EvoTest loop for clinical decision-making.
-
-For each episode:
-1. Run Hager's agent on train split (calls run.py on GPU server via SSH)
-2. Extract trajectories and scores
-3. Call Evolver (Opus API) with transcripts + scores
-4. Parse Evolver output into new config (skill, memory, hyperparams)
-5. UCB selection of best config
-6. Repeat
-
-Usage:
-  python scripts/evotest_loop.py \
-    --pathology appendicitis \
-    --episodes 20 \
-    --evolver_model claude-opus-4-5-20251101 \
-    --gpu_server user@server
-"""
-```
+| Script | Status | Purpose |
+|---|---|---|
+| `scripts/split_data.py` | Done | Split MIMIC-CDM pkl into train/test/remaining |
+| `scripts/prepare_split_for_hager.py` | Done | Copy split as `{pathology}_hadm_info_first_diag.pkl` |
+| `scripts/extract_trajectories.py` | Done | Parse results pkl → JSON with trajectories + scores |
+| `scripts/evaluate_run.py` | Done | Run PathologyEvaluator on results pkl |
+| `scripts/evolve_skill.py` | Done | Evolver: analyze trajectories → generate improved skill |
+| `scripts/sanitize_skill.py` | Done | Remove disease name leakage from skills |
+| `scripts/compare_runs.py` | Done | Side-by-side comparison of two runs |
+| `scripts/run_experiment.sh` | Done | Single-pathology evolution cycle (bash) |
+| `scripts/run_experiment_multi.sh` | Done | Multi-pathology evolution cycle (bash) |
+| `scripts/run_iterations.sh` | Done | Multi-version linear orchestrator (bash) |
+| `scripts/evotest_clinical.py` | Done | **Automated EvoTest loop** with UCB tree (see section above) |
 
 ---
 
@@ -393,42 +490,53 @@ Usage:
 
 ---
 
-## File Structure After Setup
+## File Structure
 
 ```
 mimic_skills/
-  CLAUDE.md                        # Master plan
-  EVOTEST_ADAPTATION.md            # EvoTest integration plan
-  WORKFLOW.md                      # This file
+  CLAUDE.md                          # Master plan
+  EVOTEST_ADAPTATION.md              # EvoTest integration plan
+  WORKFLOW.md                        # This file
+  EXAMPLE_WALKTHROUGH.md             # Concrete walkthrough of one cycle
   scripts/
-    split_data.py                  # Done ✓
-    prepare_split_for_hager.py     # TODO
-    extract_trajectories.py        # TODO
-    compare_runs.py                # TODO
-    evotest_loop.py                # TODO (later)
-  data_splits/                     # Done ✓
+    split_data.py                    # Split MIMIC-CDM pkl → train/test/remaining
+    prepare_split_for_hager.py       # Copy split as *_hadm_info_first_diag.pkl
+    extract_trajectories.py          # Parse results pkl → JSON
+    evaluate_run.py                  # Run PathologyEvaluator
+    evolve_skill.py                  # Evolver: trajectories → improved skill
+    sanitize_skill.py                # Remove disease name leakage
+    compare_runs.py                  # Side-by-side comparison
+    run_experiment.sh                # Single-pathology bash pipeline
+    run_experiment_multi.sh          # Multi-pathology bash pipeline
+    run_iterations.sh                # Multi-version linear orchestrator
+    evotest_clinical.py              # Automated EvoTest loop with UCB tree
+  data_splits/
     appendicitis/
       train.pkl (10)
       test.pkl (100)
       remaining.pkl (809)
+      appendicitis_hadm_info_first_diag.pkl  # symlink for Hager
     cholecystitis/ ...
     diverticulitis/ ...
     pancreatitis/ ...
   skills/
-    v1/appendicitis.md             # First evolved skill
-    v2/appendicitis.md             # Second iteration
-    ...
+    v1/acute_abdominal_pain.md       # Linear evolution (run_experiment_multi.sh)
+    v2/acute_abdominal_pain.md
+    evo/                             # EvoTest evolution (evotest_clinical.py)
+      episode_0.md                   # Sanitized skills per episode
+      episode_0_raw.md              # Raw skills before sanitization
+      episode_1.md
+      ...
   trajectories/
-    baseline_appendicitis.json     # Parsed trajectories for Evolver
-    v1_appendicitis.json
+    baseline_appendicitis_train10.json     # Linear pipeline trajectories
+    evo_ep0_appendicitis.json              # EvoTest trajectories
+    evo_ep0_cholecystitis.json
     ...
-  results/                         # Raw output from GPU server
-    appendicitis_ZeroShot_*_baseline_train10/
-    appendicitis_ZeroShot_*_v1_train10/
-    ...
-  comparisons/
-    v1_vs_baseline.md
-    ...
-  codes_Hager/...                  # Framework (modified agent.py)
-  MIMIC-CDM-IV/...                 # Original full data
+  evotest_state/
+    state.json                       # UCB tree checkpoint (for --resume)
+  results/                           # Raw output from GPU server
+  comparisons/                       # Comparison reports
+  codes_Hager/...                    # Framework (modified agent.py)
+  MIMIC-CDM-IV/...                   # Original full data
+  EvoTest/...                        # Reference EvoTest repo (not used at runtime)
 ```
