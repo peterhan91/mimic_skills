@@ -61,8 +61,8 @@ SCRIPTS_DIR = PROJECT_DIR / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 sys.path.insert(0, str(PROJECT_DIR))
 
-from scripts.sanitize_skill import sanitize_skill_text
-from scripts.evolve_skill import (
+from sanitize_skill import sanitize_skill_text
+from evolve_skill import (
     load_trajectories,
     identify_failures,
     format_trajectory_summary,
