@@ -32,5 +32,7 @@ diag_crit_writer_openai_api_key:
 confirm_diagnosis: False
 save_probabilities: False
 
+annotate_clinical: False
+
 skill_path:
 skill_inject: examples

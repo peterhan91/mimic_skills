@@ -25,6 +25,7 @@ class RunLaboratoryTests(BaseTool):
     lab_test_mapping_df: pd.DataFrame = None
     include_ref_range: bool = False
     bin_lab_results: bool = False
+    annotate_clinical: bool = False
 
     def _run(self, action_input: List[Union[int, str]]) -> str:
         return get_action_results(
@@ -34,6 +35,7 @@ class RunLaboratoryTests(BaseTool):
             lab_test_mapping_df=self.lab_test_mapping_df,
             include_ref_range=self.include_ref_range,
             bin_lab_results=self.bin_lab_results,
+            annotate_clinical=self.annotate_clinical,
         )
 
     async def _arun(self, action_input: List[Union[int, str]]) -> str:
@@ -44,6 +46,7 @@ class RunLaboratoryTests(BaseTool):
             lab_test_mapping_df=self.lab_test_mapping_df,
             include_ref_range=self.include_ref_range,
             bin_lab_results=self.bin_lab_results,
+            annotate_clinical=self.annotate_clinical,
         )
 
 

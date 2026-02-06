@@ -251,6 +251,7 @@ def build_agent_executor_ZeroShot(
     model_stop_words,
     skill_path=None,
     skill_inject="examples",
+    annotate_clinical=False,
 ):
     with open(lab_test_mapping_path, "rb") as f:
         lab_test_mapping_df = pickle.load(f)
@@ -263,6 +264,7 @@ def build_agent_executor_ZeroShot(
             lab_test_mapping_df=lab_test_mapping_df,
             include_ref_range=include_ref_range,
             bin_lab_results=bin_lab_results,
+            annotate_clinical=annotate_clinical,
         ),
         RunImaging(action_results=patient),
     ]

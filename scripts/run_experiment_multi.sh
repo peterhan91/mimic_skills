@@ -16,12 +16,13 @@ set -euo pipefail
 #   Run with skill -> Evaluate -> Extract -> Compare
 #
 # Usage:
-#   bash scripts/run_experiment_multi.sh [VERSION] [MODEL] [EVOLVER_MODEL]
+#   bash scripts/run_experiment_multi.sh [VERSION] [MODEL] [EVOLVER_MODEL] [ANNOTATE_CLINICAL]
 #
 # Examples:
 #   bash scripts/run_experiment_multi.sh v2 Qwen3_30B_A3B
 #   bash scripts/run_experiment_multi.sh v3 Qwen3_30B_A3B claude-opus-4-6
 #   bash scripts/run_experiment_multi.sh v2 MedGemma4B
+#   bash scripts/run_experiment_multi.sh v2 Qwen3_30B_A3B claude-opus-4-6 False  # disable clinical annotations
 # ============================================================
 
 # ============================================================
@@ -30,6 +31,7 @@ set -euo pipefail
 VERSION="${1:-v1}"
 MODEL="${2:-Qwen3_30B_A3B}"
 EVOLVER_MODEL="${3:-claude-opus-4-6}"
+ANNOTATE_CLINICAL="${4:-True}"
 SPLIT="train"
 PATHOLOGIES=("appendicitis" "cholecystitis" "diverticulitis" "pancreatitis")
 
@@ -98,14 +100,15 @@ mkdir -p "$RESULTS_DIR" "$TRAJ_DIR" "$SKILLS_DIR/$VERSION" "$COMP_DIR" "$LOG_DIR
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "Multi-pathology experiment configuration:"
-echo "  VERSION:        $VERSION"
-echo "  MODEL:          $MODEL"
-echo "  EVOLVER_MODEL:  $EVOLVER_MODEL"
-echo "  SPLIT:          $SPLIT"
-echo "  PATHOLOGIES:    ${PATHOLOGIES[*]}"
-echo "  PROJECT_DIR:    $PROJECT_DIR"
-echo "  BASE_MODELS:    $BASE_MODELS"
-echo "  LOG_FILE:       $LOG_FILE"
+echo "  VERSION:           $VERSION"
+echo "  MODEL:             $MODEL"
+echo "  EVOLVER_MODEL:     $EVOLVER_MODEL"
+echo "  ANNOTATE_CLINICAL: $ANNOTATE_CLINICAL"
+echo "  SPLIT:             $SPLIT"
+echo "  PATHOLOGIES:       ${PATHOLOGIES[*]}"
+echo "  PROJECT_DIR:       $PROJECT_DIR"
+echo "  BASE_MODELS:       $BASE_MODELS"
+echo "  LOG_FILE:          $LOG_FILE"
 if [ -n "$PREV_VERSION" ]; then
     echo "  PREV_VERSION:   $PREV_VERSION (will feed previous skill to Evolver)"
 fi
@@ -174,6 +177,7 @@ for PATHOLOGY in "${PATHOLOGIES[@]}"; do
     echo "  lab_test_mapping_path=$LAB_TEST_MAPPING \\"
     echo "  local_logging_dir=$RESULTS_DIR \\"
     echo "  summarize=True \\"
+    echo "  annotate_clinical=$ANNOTATE_CLINICAL \\"
     echo "  run_descr=$BASELINE_DESCR"
 
     cd "$FRAMEWORK_DIR"
@@ -185,6 +189,7 @@ for PATHOLOGY in "${PATHOLOGIES[@]}"; do
         lab_test_mapping_path="$LAB_TEST_MAPPING" \
         local_logging_dir="$RESULTS_DIR" \
         summarize=True \
+        annotate_clinical="$ANNOTATE_CLINICAL" \
         run_descr="$BASELINE_DESCR" \
         || die "Baseline run failed for $PATHOLOGY"
 
@@ -347,6 +352,7 @@ for PATHOLOGY in "${PATHOLOGIES[@]}"; do
     echo "  lab_test_mapping_path=$LAB_TEST_MAPPING \\"
     echo "  local_logging_dir=$RESULTS_DIR \\"
     echo "  summarize=True \\"
+    echo "  annotate_clinical=$ANNOTATE_CLINICAL \\"
     echo "  skill_path=$SKILL_PATH \\"
     echo "  run_descr=$EVOLVED_DESCR"
 
@@ -359,6 +365,7 @@ for PATHOLOGY in "${PATHOLOGIES[@]}"; do
         lab_test_mapping_path="$LAB_TEST_MAPPING" \
         local_logging_dir="$RESULTS_DIR" \
         summarize=True \
+        annotate_clinical="$ANNOTATE_CLINICAL" \
         skill_path="$SKILL_PATH" \
         run_descr="$EVOLVED_DESCR" \
         || die "Evolved run failed for $PATHOLOGY"

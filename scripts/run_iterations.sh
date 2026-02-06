@@ -5,17 +5,19 @@ set -euo pipefail
 # run_iterations.sh — Run multiple evolution iterations
 #
 # Usage:
-#   bash scripts/run_iterations.sh [START] [END] [MODEL] [EVOLVER_MODEL]
+#   bash scripts/run_iterations.sh [START] [END] [MODEL] [EVOLVER_MODEL] [ANNOTATE_CLINICAL]
 #
 # Examples:
 #   bash scripts/run_iterations.sh 1 5 Qwen3_30B_A3B
 #   bash scripts/run_iterations.sh 3 5 Qwen3_30B_A3B   # resume from v3
+#   bash scripts/run_iterations.sh 1 5 Qwen3_30B_A3B claude-opus-4-6 False  # disable clinical annotations
 # ============================================================
 
 START="${1:-1}"
 END="${2:-5}"
 MODEL="${3:-Qwen3_30B_A3B}"
 EVOLVER_MODEL="${4:-claude-opus-4-6}"
+ANNOTATE_CLINICAL="${5:-True}"
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 COMP_DIR="$PROJECT_DIR/comparisons"
@@ -24,9 +26,10 @@ TOTAL_START=$SECONDS
 
 echo "============================================================"
 echo "MULTI-ITERATION EXPERIMENT: v${START} through v${END}"
-echo "  Model:         $MODEL"
-echo "  Evolver:       $EVOLVER_MODEL"
-echo "  Iterations:    $((END - START + 1))"
+echo "  Model:             $MODEL"
+echo "  Evolver:           $EVOLVER_MODEL"
+echo "  Annotate Clinical: $ANNOTATE_CLINICAL"
+echo "  Iterations:        $((END - START + 1))"
 echo "============================================================"
 echo ""
 
@@ -65,7 +68,7 @@ for V in $(seq "$START" "$END"); do
     echo "************************************************************"
     echo ""
 
-    bash "$PROJECT_DIR/scripts/run_experiment_multi.sh" "v${V}" "$MODEL" "$EVOLVER_MODEL"
+    bash "$PROJECT_DIR/scripts/run_experiment_multi.sh" "v${V}" "$MODEL" "$EVOLVER_MODEL" "$ANNOTATE_CLINICAL"
 
     ITER_ELAPSED=$((SECONDS - ITER_START))
     ITER_MIN=$((ITER_ELAPSED / 60))

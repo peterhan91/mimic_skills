@@ -92,6 +92,8 @@ def run(args: DictConfig):
         run_name += "_DIAGCRIT"
     if not args.summarize:
         run_name += "_NOSUMMARY"
+    if args.get("annotate_clinical"):
+        run_name += "_CLANNOT"
     if args.get("skill_path"):
         skill_name = os.path.basename(args.skill_path).replace(".md", "")
         run_name += f"_SKILL_{skill_name}"
@@ -138,6 +140,7 @@ def run(args: DictConfig):
             model_stop_words=args.stop_words,
             skill_path=args.get("skill_path", None),
             skill_inject=args.get("skill_inject", "examples"),
+            annotate_clinical=args.get("annotate_clinical", False),
         )
 
         # Run

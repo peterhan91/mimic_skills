@@ -359,6 +359,349 @@ def truncate_text(tokenizer, input, available_tokens):
     return input
 
 
+# ---------------------------------------------------------------------------
+# Clinical annotations for lab output augmentation (Approach 3)
+# Maps lab test label (case-insensitive) -> clinical interpretation when abnormal.
+# Disease-agnostic to respect Hager's sanitization (no pathology names).
+# ---------------------------------------------------------------------------
+CLINICAL_ANNOTATIONS = {
+    # Inflammatory / Infection markers
+    "white blood cells": {
+        "HIGH": "suggests acute inflammatory process or infection",
+        "LOW": "suggests immunosuppression, bone marrow failure, or viral infection",
+    },
+    "c-reactive protein": {
+        "HIGH": "nonspecific marker of acute inflammation or tissue injury",
+    },
+    "procalcitonin": {
+        "HIGH": "suggests bacterial infection; useful for distinguishing bacterial from viral",
+    },
+    "erythrocyte sedimentation rate": {
+        "HIGH": "nonspecific marker of inflammation; correlates with acute-phase response",
+    },
+    # Hepatobiliary markers
+    "alanine aminotransferase (alt)": {
+        "HIGH": "suggests hepatocellular injury or biliary obstruction",
+    },
+    "aspartate aminotransferase (ast)": {
+        "HIGH": "suggests hepatocellular injury, muscle damage, or hemolysis",
+    },
+    "asparate aminotransferase (ast)": {  # MIMIC-IV spelling variant
+        "HIGH": "suggests hepatocellular injury, muscle damage, or hemolysis",
+    },
+    "alkaline phosphatase": {
+        "HIGH": "suggests biliary obstruction, cholestasis, or bone disease",
+    },
+    "bilirubin, total": {
+        "HIGH": "suggests hepatobiliary dysfunction, hemolysis, or biliary obstruction",
+    },
+    "bilirubin, direct": {
+        "HIGH": "suggests conjugated hyperbilirubinemia from biliary obstruction or hepatocellular disease",
+    },
+    "bilirubin, indirect": {
+        "HIGH": "suggests unconjugated hyperbilirubinemia from hemolysis or Gilbert syndrome",
+    },
+    "gamma glutamyltransferase": {
+        "HIGH": "suggests biliary obstruction or hepatic enzyme induction",
+    },
+    # Pancreatic markers
+    "lipase": {
+        "HIGH": "elevated >3x upper limit is a diagnostic criterion for acute pancreatic injury",
+    },
+    "amylase": {
+        "HIGH": "suggests acute pancreatic injury; less specific than lipase",
+    },
+    # Renal markers
+    "creatinine": {
+        "HIGH": "suggests acute or chronic kidney injury; assess GFR",
+    },
+    "urea nitrogen": {
+        "HIGH": "suggests prerenal azotemia (dehydration), renal injury, or GI bleeding",
+    },
+    # Electrolytes
+    "potassium": {
+        "HIGH": "risk of cardiac arrhythmia; consider renal function and acidosis",
+        "LOW": "risk of cardiac arrhythmia, muscle weakness; consider GI/renal losses",
+    },
+    "sodium": {
+        "HIGH": "suggests dehydration or diabetes insipidus",
+        "LOW": "suggests SIADH, fluid overload, or adrenal insufficiency",
+    },
+    "calcium, total": {
+        "HIGH": "consider hyperparathyroidism or malignancy",
+        "LOW": "consider vitamin D deficiency, hypoparathyroidism, or acute inflammation",
+    },
+    "chloride": {
+        "HIGH": "suggests non-anion gap metabolic acidosis or dehydration",
+        "LOW": "suggests metabolic alkalosis or vomiting",
+    },
+    "bicarbonate": {
+        "HIGH": "suggests metabolic alkalosis or compensation for respiratory acidosis",
+        "LOW": "suggests metabolic acidosis; calculate anion gap",
+    },
+    "magnesium": {
+        "HIGH": "usually iatrogenic; consider renal failure",
+        "LOW": "risk of arrhythmia and seizures; common with diuretic use or malnutrition",
+    },
+    "phosphate": {
+        "HIGH": "suggests renal failure or tumor lysis syndrome",
+        "LOW": "suggests refeeding syndrome, hyperparathyroidism, or vitamin D deficiency",
+    },
+    # Hematology
+    "hemoglobin": {
+        "LOW": "suggests anemia; evaluate for bleeding, hemolysis, or chronic disease",
+    },
+    "hematocrit": {
+        "HIGH": "suggests hemoconcentration (dehydration) or polycythemia",
+        "LOW": "suggests anemia or acute hemorrhage",
+    },
+    "platelet count": {
+        "HIGH": "suggests reactive thrombocytosis from inflammation or infection",
+        "LOW": "suggests consumption (DIC, sepsis), sequestration, or bone marrow failure",
+    },
+    "red blood cells": {
+        "LOW": "suggests anemia; correlate with hemoglobin and reticulocyte count",
+    },
+    "mean corpuscular volume (mcv)": {
+        "HIGH": "suggests macrocytic anemia (B12/folate deficiency, liver disease)",
+        "LOW": "suggests microcytic anemia (iron deficiency, thalassemia)",
+    },
+    # Coagulation
+    "inr(pt)": {
+        "HIGH": "suggests coagulopathy; consider liver disease, DIC, or anticoagulation",
+    },
+    "pt": {
+        "HIGH": "suggests extrinsic pathway dysfunction or anticoagulation",
+    },
+    "ptt": {
+        "HIGH": "suggests intrinsic pathway dysfunction, heparin effect, or factor deficiency",
+    },
+    "fibrinogen": {
+        "LOW": "suggests DIC or severe liver disease",
+        "HIGH": "acute-phase reactant; suggests inflammation",
+    },
+    "d-dimer": {
+        "HIGH": "suggests fibrinolysis; sensitive for thromboembolism but nonspecific",
+    },
+    # Metabolic
+    "glucose": {
+        "HIGH": "suggests hyperglycemia; consider stress response, diabetes, or steroid use",
+        "LOW": "risk of neuroglycopenic symptoms; consider insulin excess or sepsis",
+    },
+    "lactate": {
+        "HIGH": "suggests tissue hypoperfusion, sepsis, or mesenteric ischemia",
+    },
+    "anion gap": {
+        "HIGH": "suggests high-anion-gap metabolic acidosis (lactic, ketoacidosis, toxins, renal failure)",
+    },
+    # ABG / Blood gas
+    "ph": {
+        "HIGH": "alkalemia; consider respiratory or metabolic alkalosis",
+        "LOW": "acidemia; consider respiratory or metabolic acidosis",
+    },
+    "pco2": {
+        "HIGH": "suggests respiratory acidosis or compensatory retention",
+        "LOW": "suggests respiratory alkalosis or hyperventilation",
+    },
+    "po2": {
+        "LOW": "suggests hypoxemia; consider supplemental oxygen and workup",
+    },
+    "base excess": {
+        "LOW": "suggests metabolic acidosis",
+        "HIGH": "suggests metabolic alkalosis",
+    },
+    # Cardiac
+    "troponin t": {
+        "HIGH": "suggests myocardial injury; not always acute MI (also sepsis, PE, renal failure)",
+    },
+    "nt-probnp": {
+        "HIGH": "suggests heart failure or cardiac strain; correlate with clinical picture",
+    },
+    # Nutrition
+    "albumin": {
+        "LOW": "suggests malnutrition, hepatic synthetic dysfunction, or acute inflammation",
+    },
+    "prealbumin": {
+        "LOW": "suggests acute malnutrition or inflammatory state",
+    },
+    # Thyroid
+    "thyroid stimulating hormone": {
+        "HIGH": "suggests hypothyroidism",
+        "LOW": "suggests hyperthyroidism or secondary hypothyroidism",
+    },
+    # Urinalysis
+    "urine wbc": {
+        "HIGH": "suggests urinary tract infection or inflammation",
+    },
+    "urine rbc": {
+        "HIGH": "suggests hematuria; consider nephrolithiasis, infection, or malignancy",
+    },
+    "urine nitrite": {
+        "HIGH": "suggests gram-negative bacteriuria (UTI)",
+    },
+    # Triglycerides (relevant for severity grading)
+    "triglycerides": {
+        "HIGH": "risk factor for disease severity; consider secondary causes",
+    },
+}
+
+
+# Aliases for MIMIC-IV label variants → canonical CLINICAL_ANNOTATIONS keys
+_LABEL_ALIASES = {
+    "wbc": "white blood cells",
+    "wbc count": "white blood cells",
+    "white blood cell count": "white blood cells",
+    "asparate aminotransferase": "asparate aminotransferase (ast)",
+    "alanine aminotransferase": "alanine aminotransferase (alt)",
+    "sodium, whole blood": "sodium",
+    "potassium, whole blood": "potassium",
+    "chloride, whole blood": "chloride",
+    "calcium, whole blood": "calcium, total",
+    "glucose, whole blood": "glucose",
+    "creatinine, whole blood": "creatinine",
+    "bicarbonate, whole blood": "bicarbonate",
+    "lactate, whole blood": "lactate",
+    "ph, whole blood": "ph",
+    "pco2, whole blood": "pco2",
+    "po2, whole blood": "po2",
+    "hemoglobin, whole blood": "hemoglobin",
+    "hematocrit, whole blood": "hematocrit",
+    "base excess, whole blood": "base excess",
+}
+
+
+def _get_clinical_annotation(label, status):
+    """Look up clinical annotation for a lab test label and abnormality status.
+
+    Handles MIMIC-IV label variants (e.g., "Sodium, Whole Blood" -> "sodium",
+    "WBC Count" -> "white blood cells") via alias table and comma-stripping fallback.
+
+    Args:
+        label: Lab test label string (e.g., "White Blood Cells")
+        status: One of "HIGH", "CRITICALLY HIGH", "LOW", "CRITICALLY LOW"
+
+    Returns:
+        Clinical annotation string, or empty string if not found.
+    """
+    direction = "HIGH" if "HIGH" in status else "LOW" if "LOW" in status else None
+    if not direction:
+        return ""
+
+    key = label.lower().strip()
+
+    # Direct match
+    annotations = CLINICAL_ANNOTATIONS.get(key)
+    if annotations:
+        return annotations.get(direction, "")
+
+    # Alias match
+    alias_key = _LABEL_ALIASES.get(key)
+    if alias_key:
+        annotations = CLINICAL_ANNOTATIONS.get(alias_key)
+        if annotations:
+            return annotations.get(direction, "")
+
+    # Fallback: strip ", <fluid>" suffix (e.g., "Creatinine, Urine" -> "creatinine")
+    if "," in key:
+        base_key = key.split(",")[0].strip()
+        annotations = CLINICAL_ANNOTATIONS.get(base_key)
+        if annotations:
+            return annotations.get(direction, "")
+
+    return ""
+
+
+def create_lab_test_string_annotated(
+    test_id,
+    lab_test_mapping_df,
+    hadm_info,
+    critical_pct=30.0,
+):
+    """Calculator-style lab formatting with clinical interpretation.
+
+    Combines MIMIC-ReAct's severity grading (HIGH/LOW/CRITICALLY HIGH/LOW
+    with percentage deviation) with clinical annotations explaining what
+    the abnormality means.
+
+    Output examples:
+      (Blood) WBC: HIGH (14.5 K/uL, normal: 4.0-10.0, 45.0% above normal)
+        -> suggests acute inflammatory process or infection
+      (Blood) Lipase: CRITICALLY HIGH (523 IU/L, normal: 0-60, 771.7% above normal)
+        -> elevated >3x upper limit is a diagnostic criterion for acute pancreatic injury
+
+    Args:
+        test_id: Lab test itemid
+        lab_test_mapping_df: Mapping dataframe for test IDs
+        hadm_info: Patient data dict with lab values and reference ranges
+        critical_pct: Percentage threshold for CRITICALLY HIGH/LOW (default 30%)
+
+    Returns:
+        Formatted string with severity, value, reference range, and clinical annotation.
+    """
+    lab_test_fluid = itemid_to_field(test_id, "fluid", lab_test_mapping_df)
+    lab_test_label = itemid_to_field(test_id, "label", lab_test_mapping_df)
+    lab_test_value = hadm_info["Laboratory Tests"].get(test_id, "N/A")
+
+    # Microbiology fallback
+    if lab_test_value == "N/A":
+        lab_test_fluid = "Microbiology"
+        lab_test_value = hadm_info["Microbiology"].get(test_id, "N/A")
+
+    # Try to parse numeric value
+    toks = str(lab_test_value).split()
+    try:
+        val = float(toks[0])
+    except (ValueError, IndexError):
+        # Non-numeric (qualitative) — return as-is, like original
+        return f"({lab_test_fluid}) {lab_test_label}: {lab_test_value}\n"
+
+    unit = toks[1] if len(toks) > 1 else ""
+
+    # Get reference ranges from patient data
+    rr_lower = hadm_info["Reference Range Lower"].get(test_id, None)
+    rr_upper = hadm_info["Reference Range Upper"].get(test_id, None)
+
+    # Check for NaN (NaN != NaN trick from original code)
+    if rr_lower != rr_lower or rr_upper != rr_upper:
+        # No valid reference range — return value only
+        return f"({lab_test_fluid}) {lab_test_label}: {lab_test_value}\n"
+
+    try:
+        lower_f = float(rr_lower)
+        upper_f = float(rr_upper)
+    except (ValueError, TypeError):
+        return f"({lab_test_fluid}) {lab_test_label}: {lab_test_value}\n"
+
+    # Classification with severity thresholds
+    status = "Normal"
+    pct_str = ""
+    if val < lower_f and lower_f > 0:
+        diff = lower_f - val
+        pct = max(0.0, (diff / lower_f) * 100.0)
+        status = "LOW" if pct < critical_pct else "CRITICALLY LOW"
+        pct_str = f", {pct:.1f}% below normal"
+    elif val > upper_f and upper_f > 0:
+        diff = val - upper_f
+        pct = max(0.0, (diff / upper_f) * 100.0)
+        status = "HIGH" if pct < critical_pct else "CRITICALLY HIGH"
+        pct_str = f", {pct:.1f}% above normal"
+
+    # Build output line
+    unit_str = f" {unit}" if unit else ""
+    line = (
+        f"({lab_test_fluid}) {lab_test_label}: {status} "
+        f"({val:g}{unit_str}, normal: {lower_f:g}-{upper_f:g}{unit_str}{pct_str})\n"
+    )
+
+    # Add clinical annotation for abnormal results
+    if status != "Normal":
+        annotation = _get_clinical_annotation(lab_test_label, status)
+        if annotation:
+            line += f"  -> {annotation}\n"
+
+    return line
+
+
 def create_lab_test_string(
     test_id,
     lab_test_mapping_df,

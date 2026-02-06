@@ -4,7 +4,7 @@ from typing import Union, List, Dict
 import pandas as pd
 from thefuzz import process
 
-from utils.nlp import create_lab_test_string
+from utils.nlp import create_lab_test_string, create_lab_test_string_annotated
 from tools.utils import UNIQUE_TO_BROAD_MODALITY, itemid_to_field
 from agents.prompts import (
     DIAGNOSTIC_CRITERIA_APPENDICITIS,
@@ -34,6 +34,7 @@ def get_action_results(
     include_ref_range: bool = False,
     bin_lab_results: bool = False,
     already_requested_scans: Dict = None,
+    annotate_clinical: bool = False,
 ):
     # Write header
     result_string = f"{action.value}:\n"
@@ -46,6 +47,7 @@ def get_action_results(
             lab_test_mapping_df=lab_test_mapping_df,
             include_ref_range=include_ref_range,
             bin_lab_results=bin_lab_results,
+            annotate_clinical=annotate_clinical,
         )
 
     # Imaging tests are made up of a modality and a region
@@ -97,13 +99,17 @@ def retrieve_lab_tests(
     lab_test_mapping_df: pd.DataFrame,
     include_ref_range: bool,
     bin_lab_results: bool,
+    annotate_clinical: bool = False,
 ) -> str:
     """Retrieves the desired itemids from the patient records
 
     Args:
         action_input (Union[List[str], Dict]): The requested laboratory tests.
         action_results (Dict): Contains the results of the laboratory tests.
-        lab_test_mapping_path (str): The path to the lab test mapping.
+        lab_test_mapping_df (pd.DataFrame): The lab test mapping.
+        include_ref_range (bool): Whether to include reference ranges.
+        bin_lab_results (bool): Whether to bin lab results.
+        annotate_clinical (bool): Whether to add clinical interpretation annotations.
 
     Returns:
         result_string (str): The results of the requested laboratory tests in pretty string format to be given as an observation to the model.
@@ -113,13 +119,20 @@ def retrieve_lab_tests(
     for test in action_input:
         # Only includes tests that are found.
         if test in action_results["Laboratory Tests"]:
-            result_string += create_lab_test_string(
-                test,
-                lab_test_mapping_df,
-                action_results,
-                include_ref_range,
-                bin_lab_results,
-            )
+            if annotate_clinical:
+                result_string += create_lab_test_string_annotated(
+                    test,
+                    lab_test_mapping_df,
+                    action_results,
+                )
+            else:
+                result_string += create_lab_test_string(
+                    test,
+                    lab_test_mapping_df,
+                    action_results,
+                    include_ref_range,
+                    bin_lab_results,
+                )
         # else:
         #    result_string += (
         #        f"{itemid_to_field(test, 'label', lab_test_mapping_df)}: N/A\n"

@@ -9,11 +9,12 @@ set -euo pipefail
 #           skill -> Evaluate -> Extract -> Compare
 #
 # Usage:
-#   bash scripts/run_experiment.sh [PATHOLOGY] [VERSION] [EVOLVER_MODEL]
+#   bash scripts/run_experiment.sh [PATHOLOGY] [VERSION] [EVOLVER_MODEL] [ANNOTATE_CLINICAL]
 #
 # Examples:
 #   bash scripts/run_experiment.sh cholecystitis v1
 #   bash scripts/run_experiment.sh appendicitis v2 claude-opus-4-6
+#   bash scripts/run_experiment.sh appendicitis v1 claude-opus-4-6 False  # disable clinical annotations
 # ============================================================
 
 # ============================================================
@@ -22,6 +23,7 @@ set -euo pipefail
 PATHOLOGY="${1:-cholecystitis}"
 VERSION="${2:-v1}"
 EVOLVER_MODEL="${3:-claude-opus-4-6}"
+ANNOTATE_CLINICAL="${4:-True}"
 SPLIT="train"
 MODEL="MedGemma4B"
 
@@ -79,14 +81,15 @@ mkdir -p "$RESULTS_DIR" "$TRAJ_DIR" "$SKILLS_DIR/$VERSION" "$COMP_DIR" "$LOG_DIR
 exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "Experiment configuration:"
-echo "  PATHOLOGY:      $PATHOLOGY"
-echo "  VERSION:        $VERSION"
-echo "  EVOLVER_MODEL:  $EVOLVER_MODEL"
-echo "  SPLIT:          $SPLIT"
-echo "  MODEL:          $MODEL"
-echo "  PROJECT_DIR:    $PROJECT_DIR"
-echo "  BASE_MODELS:    $BASE_MODELS"
-echo "  LOG_FILE:       $LOG_FILE"
+echo "  PATHOLOGY:         $PATHOLOGY"
+echo "  VERSION:           $VERSION"
+echo "  EVOLVER_MODEL:     $EVOLVER_MODEL"
+echo "  ANNOTATE_CLINICAL: $ANNOTATE_CLINICAL"
+echo "  SPLIT:             $SPLIT"
+echo "  MODEL:             $MODEL"
+echo "  PROJECT_DIR:       $PROJECT_DIR"
+echo "  BASE_MODELS:       $BASE_MODELS"
+echo "  LOG_FILE:          $LOG_FILE"
 echo ""
 
 # Check prerequisites
@@ -117,6 +120,7 @@ echo "  base_models=$BASE_MODELS \\"
 echo "  lab_test_mapping_path=$LAB_TEST_MAPPING \\"
 echo "  local_logging_dir=$RESULTS_DIR \\"
 echo "  summarize=True \\"
+echo "  annotate_clinical=$ANNOTATE_CLINICAL \\"
 echo "  run_descr=$BASELINE_DESCR"
 
 cd "$FRAMEWORK_DIR"
@@ -128,6 +132,7 @@ python run.py \
     lab_test_mapping_path="$LAB_TEST_MAPPING" \
     local_logging_dir="$RESULTS_DIR" \
     summarize=True \
+    annotate_clinical="$ANNOTATE_CLINICAL" \
     run_descr="$BASELINE_DESCR" \
     || die "Baseline run failed"
 
@@ -232,6 +237,7 @@ echo "  base_models=$BASE_MODELS \\"
 echo "  lab_test_mapping_path=$LAB_TEST_MAPPING \\"
 echo "  local_logging_dir=$RESULTS_DIR \\"
 echo "  summarize=True \\"
+echo "  annotate_clinical=$ANNOTATE_CLINICAL \\"
 echo "  skill_path=$SKILL_PATH \\"
 echo "  run_descr=$EVOLVED_DESCR"
 
@@ -244,6 +250,7 @@ python run.py \
     lab_test_mapping_path="$LAB_TEST_MAPPING" \
     local_logging_dir="$RESULTS_DIR" \
     summarize=True \
+    annotate_clinical="$ANNOTATE_CLINICAL" \
     skill_path="$SKILL_PATH" \
     run_descr="$EVOLVED_DESCR" \
     || die "Evolved run failed"
