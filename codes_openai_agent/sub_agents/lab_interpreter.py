@@ -10,26 +10,22 @@ from agents import Agent
 from models import LabInterpretation
 
 
-lab_interpreter = Agent(
-    name="Lab Interpreter",
-    instructions=(
-        "You are a clinical laboratory specialist. Analyze the provided lab results "
-        "and produce a structured interpretation.\n\n"
-        "Focus on:\n"
-        "1. Identify ALL abnormal values (high or low relative to reference ranges)\n"
-        "2. Explain the clinical significance of each abnormality\n"
-        "3. Look for PATTERNS across multiple values — what do combined abnormalities suggest?\n"
-        "   - e.g., elevated WBC + elevated CRP = acute inflammatory process\n"
-        "   - e.g., elevated lipase >3x ULN + abdominal pain = acute pancreatitis\n"
-        "   - e.g., elevated ALT/AST + elevated bilirubin = hepatobiliary pathology\n"
-        "4. Suggest follow-up tests that would help narrow the differential\n\n"
-        "Do NOT name specific diseases in your diagnosis — describe the pathological "
-        "process (e.g., 'acute inflammatory process' not 'appendicitis').\n"
-        "Be concise and clinically precise."
-    ),
-    output_type=LabInterpretation,
-    model="gpt-4o-mini",
+LAB_INTERPRETER_INSTRUCTIONS = (
+    "You are a clinical laboratory specialist. Analyze the provided lab results "
+    "and produce a structured interpretation.\n\n"
+    "Focus on:\n"
+    "1. Identify ALL abnormal values (high or low relative to reference ranges)\n"
+    "2. Explain the clinical significance of each abnormality\n"
+    "3. Look for PATTERNS across multiple values — what do combined abnormalities suggest?\n"
+    "   - e.g., elevated WBC + elevated CRP = acute inflammatory process\n"
+    "   - e.g., elevated lipase >3x ULN + abdominal pain = acute pancreatitis\n"
+    "   - e.g., elevated ALT/AST + elevated bilirubin = hepatobiliary pathology\n"
+    "4. Suggest follow-up tests that would help narrow the differential\n\n"
+    "Do NOT name specific diseases in your diagnosis — describe the pathological "
+    "process (e.g., 'acute inflammatory process' not 'appendicitis').\n"
+    "Be concise and clinically precise."
 )
+
 
 async def _extract_lab_output(r):
     """Extract structured lab interpretation as a string for the orchestrator."""
@@ -43,12 +39,24 @@ async def _extract_lab_output(r):
     )
 
 
-lab_interpreter_tool = lab_interpreter.as_tool(
-    tool_name="interpret_lab_results",
-    tool_description=(
-        "Analyze lab results for clinical significance and patterns. "
-        "Pass the raw lab result text. Returns a structured interpretation "
-        "with abnormal findings, clinical significance, and suggested follow-up."
-    ),
-    custom_output_extractor=_extract_lab_output,
-)
+def create_lab_interpreter_tool(model_name="gpt-4o-mini"):
+    """Create the Lab Interpreter agent and return it as a tool.
+
+    Args:
+        model_name: Model identifier (str for OpenAI, LitellmModel for others).
+    """
+    lab_interpreter = Agent(
+        name="Lab Interpreter",
+        instructions=LAB_INTERPRETER_INSTRUCTIONS,
+        output_type=LabInterpretation,
+        model=model_name,
+    )
+    return lab_interpreter.as_tool(
+        tool_name="interpret_lab_results",
+        tool_description=(
+            "Analyze lab results for clinical significance and patterns. "
+            "Pass the raw lab result text. Returns a structured interpretation "
+            "with abnormal findings, clinical significance, and suggested follow-up."
+        ),
+        custom_output_extractor=_extract_lab_output,
+    )

@@ -17,10 +17,12 @@ Usage:
 import argparse
 import asyncio
 import json
+import logging
 import os
 import pickle
 import sys
 import time
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -32,6 +34,51 @@ if _OUR_ROOT not in sys.path:
 from hager_imports import load_hadm_from_file, load_evaluator
 from manager import ClinicalDiagnosisManager, ManagerConfig
 from evaluator_adapter import convert_sdk_result
+
+logger = logging.getLogger("sdk_agent")
+
+
+def append_to_pickle_file(filename, data):
+    """Append a dict to a pickle file (binary append mode).
+
+    Matches Hager's utils/logging.py pattern for incremental, crash-resilient
+    result saving. Each call appends one pickled object; read back with
+    read_from_pickle_file().
+    """
+    with open(filename, "ab") as f:
+        pickle.dump(data, f)
+
+
+def read_from_pickle_file(filename):
+    """Generator yielding each pickled object from an append-mode pickle file."""
+    with open(filename, "rb") as f:
+        while True:
+            try:
+                yield pickle.load(f)
+            except EOFError:
+                break
+
+
+def setup_logging(log_path, level=logging.INFO):
+    """Configure logging to both file and console (matching Hager's loguru pattern)."""
+    fmt = "%(asctime)s | %(levelname)-8s | %(message)s"
+    datefmt = "%Y-%m-%d %H:%M:%S"
+
+    # File handler (detailed)
+    fh = logging.FileHandler(log_path, mode="a")
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(logging.Formatter(fmt, datefmt=datefmt))
+
+    # Console handler (info+)
+    ch = logging.StreamHandler()
+    ch.setLevel(level)
+    ch.setFormatter(logging.Formatter(fmt, datefmt=datefmt))
+
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+
+    return logger
 
 
 def parse_args():
@@ -58,6 +105,13 @@ def parse_args():
         "--litellm-base-url",
         default=None,
         help="Base URL for LiteLLM (e.g. http://gpu:8000/v1)",
+    )
+    parser.add_argument(
+        "--sub-agent-model",
+        default=None,
+        help="Model for sub-agents (Lab Interpreter, Challenger). "
+        "Defaults to same as --model/--litellm-model. "
+        "Pass a LiteLLM string like 'anthropic/claude-sonnet-4-5-20250929'.",
     )
     parser.add_argument(
         "--data-dir",
@@ -190,9 +244,20 @@ async def main(args):
             **({"base_url": args.litellm_base_url} if args.litellm_base_url else {}),
         )
 
+    # Resolve sub-agent model (defaults to same as main model)
+    sub_agent_model = None
+    if args.sub_agent_model:
+        from agents.extensions.models.litellm_model import LitellmModel as _LM
+
+        sub_agent_model = _LM(
+            model=args.sub_agent_model,
+            **({"base_url": args.litellm_base_url} if args.litellm_base_url else {}),
+        )
+
     # Build manager config
     config = ManagerConfig(
         model=model,
+        sub_agent_model=sub_agent_model,
         lab_test_mapping_path=lab_mapping_path,
         annotate_clinical=args.annotate_clinical,
         skill_path=args.skill_path,
@@ -207,12 +272,6 @@ async def main(args):
     if args.max_patients:
         patient_ids = patient_ids[: args.max_patients]
 
-    print(f"Running {args.pathology} diagnosis on {len(patient_ids)} patients")
-    print(f"Model: {args.litellm_model or args.model}")
-    print(f"Data: {data_dir} (split={args.split})")
-    if args.skill_path:
-        print(f"Skill: {args.skill_path}")
-
     # Setup output directory
     dt = datetime.fromtimestamp(time.time()).strftime("%d-%m-%Y_%H:%M:%S")
     model_label = (args.litellm_model or args.model).replace("/", "_")
@@ -226,8 +285,27 @@ async def main(args):
     output_dir = os.path.join(args.output_dir, run_name)
     os.makedirs(output_dir, exist_ok=True)
 
+    # Setup logging — .log file + console (matching Hager's loguru pattern)
+    log_path = os.path.join(output_dir, f"{run_name}.log")
     results_path = os.path.join(output_dir, f"{run_name}_results.pkl")
     eval_path = os.path.join(output_dir, f"{run_name}_eval.pkl")
+    setup_logging(log_path)
+
+    logger.info("=" * 60)
+    logger.info(f"Run: {run_name}")
+    logger.info("=" * 60)
+    logger.info(f"Pathology:   {args.pathology}")
+    logger.info(f"Model:       {args.litellm_model or args.model}")
+    logger.info(f"Data:        {data_dir} (split={args.split})")
+    logger.info(f"Patients:    {len(patient_ids)}")
+    logger.info(f"Max turns:   {args.max_turns}")
+    logger.info(f"Annotate:    {args.annotate_clinical}")
+    if args.skill_path:
+        logger.info(f"Skill:       {args.skill_path}")
+    logger.info(f"Output:      {output_dir}")
+    logger.info(f"Log file:    {log_path}")
+    logger.info(f"Results pkl: {results_path}")
+    logger.info(f"Eval pkl:    {eval_path}")
 
     # Run diagnosis for each patient
     all_results = {}
@@ -235,7 +313,7 @@ async def main(args):
     total = len(patient_ids)
 
     for i, patient_id in enumerate(patient_ids):
-        print(f"\n[{i + 1}/{total}] Patient {patient_id}")
+        logger.info(f"Processing patient: {patient_id} [{i + 1}/{total}]")
 
         evaluator = load_evaluator(args.pathology)
 
@@ -260,7 +338,7 @@ async def main(args):
                 reference=reference,
             )
 
-            all_results[patient_id] = {
+            result_record = {
                 "diagnosis": final_output.diagnosis,
                 "confidence": final_output.confidence,
                 "treatment": final_output.treatment,
@@ -271,33 +349,43 @@ async def main(args):
                 "prediction": prediction,
                 "trajectory_length": len(trajectory),
             }
+            all_results[patient_id] = result_record
             all_evals[patient_id] = eval_result
 
-            # Print summary
+            # Incremental save (crash-resilient, matching Hager's pattern)
+            append_to_pickle_file(results_path, {patient_id: result_record})
+            append_to_pickle_file(eval_path, {patient_id: eval_result})
+
+            # Log summary
             scores = eval_result["scores"]
-            print(f"  Diagnosis: {final_output.diagnosis} "
-                  f"(correct={scores['Diagnosis']}, "
-                  f"gracious={scores['Gracious Diagnosis']})")
-            print(f"  PE first: {scores['Physical Examination']}, "
-                  f"Labs: {scores['Laboratory Tests']}, "
-                  f"Imaging: {scores['Imaging']}")
-            print(f"  Action Parsing: {scores['Action Parsing']}, "
-                  f"Invalid Tools: {scores['Invalid Tools']}, "
-                  f"Rounds: {scores['Rounds']}")
-            print(f"  Treatment: {final_output.treatment[:80]}...")
+            logger.info(
+                f"  Diagnosis: {final_output.diagnosis} "
+                f"(correct={scores['Diagnosis']}, "
+                f"gracious={scores['Gracious Diagnosis']})"
+            )
+            logger.info(
+                f"  PE first: {scores['Physical Examination']}, "
+                f"Labs: {scores['Laboratory Tests']}, "
+                f"Imaging: {scores['Imaging']}"
+            )
+            logger.info(
+                f"  Action Parsing: {scores['Action Parsing']}, "
+                f"Invalid Tools: {scores['Invalid Tools']}, "
+                f"Rounds: {scores['Rounds']}"
+            )
+            logger.info(f"  Treatment: {final_output.treatment[:80]}...")
+            logger.info(f"  Eval: {scores}")
 
         except Exception as e:
-            print(f"  ERROR: {e}")
+            logger.error(f"  ERROR on patient {patient_id}: {e}")
+            logger.debug(traceback.format_exc())
             all_results[patient_id] = {"error": str(e)}
             all_evals[patient_id] = {"error": str(e)}
+            # Save error incrementally too
+            append_to_pickle_file(results_path, {patient_id: {"error": str(e)}})
+            append_to_pickle_file(eval_path, {patient_id: {"error": str(e)}})
 
-    # Save results
-    with open(results_path, "wb") as f:
-        pickle.dump(all_results, f)
-    with open(eval_path, "wb") as f:
-        pickle.dump(all_evals, f)
-
-    # Save human-readable summary
+    # Save human-readable summary JSON (complete, non-incremental)
     summary_path = os.path.join(output_dir, f"{run_name}_summary.json")
     with open(summary_path, "w") as f:
         json.dump(
@@ -323,10 +411,11 @@ async def main(args):
             default=str,
         )
 
-    # Print aggregate metrics
-    print("\n" + "=" * 60)
-    print("AGGREGATE RESULTS")
-    print("=" * 60)
+    # Aggregate metrics
+    logger.info("")
+    logger.info("=" * 60)
+    logger.info("AGGREGATE RESULTS")
+    logger.info("=" * 60)
 
     valid_evals = {
         k: v for k, v in all_evals.items()
@@ -338,9 +427,13 @@ async def main(args):
         for key in score_keys:
             values = [v["scores"][key] for v in valid_evals.values()]
             avg = sum(values) / len(values)
-            print(f"  {key}: {avg:.3f} (n={len(values)})")
+            logger.info(f"  {key}: {avg:.3f} (n={len(values)})")
 
-    print(f"\nResults saved to: {output_dir}")
+    logger.info(f"Results saved to: {output_dir}")
+    logger.info(f"  {run_name}.log           — full text log")
+    logger.info(f"  {run_name}_results.pkl   — agent results (incremental)")
+    logger.info(f"  {run_name}_eval.pkl      — evaluator scores (incremental)")
+    logger.info(f"  {run_name}_summary.json  — human-readable summary")
 
 
 if __name__ == "__main__":

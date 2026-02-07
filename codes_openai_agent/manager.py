@@ -21,6 +21,7 @@ class ManagerConfig:
     """Configuration for ClinicalDiagnosisManager."""
 
     model: Any = "gpt-4o"  # str for OpenAI models, LitellmModel for others
+    sub_agent_model: Any = None  # Model for sub-agents; defaults to same as model
     lab_test_mapping_path: str = "./MIMIC-CDM-IV/lab_test_mapping.pkl"
     annotate_clinical: bool = True
     skill_path: Optional[str] = None
@@ -75,7 +76,10 @@ class ClinicalDiagnosisManager:
             skill_content=self._skill_content,
         )
 
-        orchestrator = create_orchestrator(model_name=self.config.model)
+        orchestrator = create_orchestrator(
+            model_name=self.config.model,
+            sub_agent_model_name=self.config.sub_agent_model,
+        )
 
         patient_history = patient_data["Patient History"].strip()
 

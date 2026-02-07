@@ -38,11 +38,13 @@ Requires: ANTHROPIC_API_KEY environment variable (for Evolver).
 import argparse
 import asyncio
 import json
+import logging
 import math
 import os
 import sys
 import time
 import traceback
+from datetime import datetime
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -106,6 +108,46 @@ MAX_LAB_SCORE = {
 
 STATE_DIR = PROJECT_DIR / "evotest_state_sdk"
 STATE_FILE = STATE_DIR / "state.json"
+
+logger = logging.getLogger("evotest_sdk")
+
+
+def append_to_pickle_file(filename, data):
+    """Append a dict to a pickle file (binary append mode).
+
+    Matches Hager's utils/logging.py pattern for incremental, crash-resilient
+    result saving.
+    """
+    import pickle
+    with open(filename, "ab") as f:
+        pickle.dump(data, f)
+
+
+def setup_evotest_logging(log_dir):
+    """Configure logging to both file and console.
+
+    Returns the log file path. Creates {log_dir}/evotest_sdk.log.
+    """
+    log_dir = Path(log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / "evotest_sdk.log"
+
+    fmt = "%(asctime)s | %(levelname)-8s | %(message)s"
+    datefmt = "%Y-%m-%d %H:%M:%S"
+
+    fh = logging.FileHandler(str(log_path), mode="a")
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(logging.Formatter(fmt, datefmt=datefmt))
+
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.INFO)
+    ch.setFormatter(logging.Formatter(fmt, datefmt=datefmt))
+
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+
+    return str(log_path)
 
 
 # ---------------------------------------------------------------------------
@@ -238,6 +280,11 @@ class SDKEvoTest:
         self.skills_dir = PROJECT_DIR / "skills" / "evo_sdk"
         self.lab_test_mapping = PROJECT_DIR / "MIMIC-CDM-IV" / "lab_test_mapping.pkl"
 
+        # Incremental results pkl (crash-resilient, matching Hager pattern)
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        self.results_pkl = STATE_DIR / "results.pkl"
+        self.eval_pkl = STATE_DIR / "eval.pkl"
+
         # Resolved model (str or LitellmModel)
         self._resolved_model = None
 
@@ -283,7 +330,7 @@ class SDKEvoTest:
             and self.best_node_idx is not None
             and (self.best_score - self.last_episode_score) >= self.args.drop_threshold
         ):
-            print(
+            logger.info(
                 f"  [UCB] Force-selecting best node {self.best_node_idx} "
                 f"(score={self.best_score:.3f}) after drop "
                 f"(last={self.last_episode_score:.3f}, "
@@ -294,7 +341,7 @@ class SDKEvoTest:
         # Normal UCB selection
         best_ucb_idx = max(range(len(self.nodes)), key=self.calculate_ucb)
         ucb_val = self.calculate_ucb(best_ucb_idx)
-        print(
+        logger.info(
             f"  [UCB] Selected node {best_ucb_idx} "
             f"(score={self.nodes[best_ucb_idx]['score']:.3f}, "
             f"ucb={ucb_val:.3f}, depth={self.nodes[best_ucb_idx]['depth']})"
@@ -378,7 +425,7 @@ class SDKEvoTest:
             sanitized = sanitize_skill_text(skill_text)
             skill_file = self.skills_dir / f"episode_{episode_num}.md"
             skill_file.write_text(sanitized)
-            print(f"  Saved skill: {skill_file} ({len(sanitized)} chars)")
+            logger.info(f"  Saved skill: {skill_file} ({len(sanitized)} chars)")
 
         trajectory_paths = []
         all_trajectory_data = []
@@ -387,7 +434,7 @@ class SDKEvoTest:
         for pathology in pathologies:
             patient_data_path = self.data_dir / pathology / f"{self.args.split}.pkl"
             if not patient_data_path.exists():
-                print(f"  WARNING: {patient_data_path} not found, skipping {pathology}")
+                logger.warning(f"  {patient_data_path} not found, skipping {pathology}")
                 continue
 
             if self.args.dry_run:
@@ -399,9 +446,9 @@ class SDKEvoTest:
             # Load patients
             patients = load_hadm_from_file(self.args.split, base_mimic=str(self.data_dir / pathology))
             patient_ids = list(patients.keys())
-            print(f"  [{pathology}] Running {len(patient_ids)} patients...")
+            logger.info(f"  [{pathology}] Running {len(patient_ids)} patients...")
 
-            # Create manager
+            # Create manager (sub-agents use same model as orchestrator)
             config = ManagerConfig(
                 model=self._resolve_model(),
                 lab_test_mapping_path=str(self.lab_test_mapping),
@@ -409,11 +456,12 @@ class SDKEvoTest:
                 skill_path=str(skill_file) if skill_file else None,
                 max_turns=self.args.max_turns,
             )
+            # sub_agent_model defaults to None → same as main model
             manager = ClinicalDiagnosisManager(config)
 
             admissions = []
             for pid_idx, patient_id in enumerate(patient_ids):
-                print(f"    [{pid_idx + 1}/{len(patient_ids)}] Patient {patient_id}", end="")
+                logger.info(f"    [{pid_idx + 1}/{len(patient_ids)}] Processing patient: {patient_id}")
 
                 try:
                     final_output, run_result, ctx = await manager.run(
@@ -444,11 +492,23 @@ class SDKEvoTest:
                     admissions.append(admission)
 
                     dx_score = eval_result["scores"].get("Diagnosis", 0)
-                    print(f" -> Dx={dx_score} ({final_output.diagnosis[:40]})")
+                    logger.info(f"      -> Dx={dx_score} ({final_output.diagnosis[:40]})")
+                    logger.info(f"      Eval: {eval_result['scores']}")
+
+                    # Incremental save (crash-resilient)
+                    append_to_pickle_file(self.results_pkl, {
+                        "episode": episode_num, "pathology": pathology,
+                        "patient_id": patient_id, "diagnosis": final_output.diagnosis,
+                        "scores": eval_result["scores"],
+                    })
+                    append_to_pickle_file(self.eval_pkl, {
+                        "episode": episode_num, "pathology": pathology,
+                        "patient_id": patient_id, "eval": eval_result,
+                    })
 
                 except Exception as e:
-                    print(f" -> ERROR: {e}")
-                    traceback.print_exc()
+                    logger.error(f"      ERROR on patient {patient_id}: {e}")
+                    logger.debug(traceback.format_exc())
                     # Create dummy admission with zero scores so the episode can continue
                     dummy_scores = {
                         "Diagnosis": 0, "Gracious Diagnosis": 0,
@@ -477,13 +537,13 @@ class SDKEvoTest:
             with open(traj_output, "w") as f:
                 json.dump(traj_data, f, indent=2, default=str)
             trajectory_paths.append(str(traj_output))
-            print(f"  [{pathology}] Saved trajectory: {traj_output}")
+            logger.info(f"  [{pathology}] Saved trajectory: {traj_output}")
 
         if self.args.dry_run:
             return 0.0, {}, {}, trajectory_paths
 
         if not all_trajectory_data:
-            print("  ERROR: No trajectory data collected")
+            logger.error("  No trajectory data collected")
             return None
 
         composite, per_metric, per_pathology = self.compute_composite_score(all_trajectory_data)
@@ -497,16 +557,16 @@ class SDKEvoTest:
         prompt = self._build_evolver_prompt(parent_node, trajectory_data_list)
 
         if self.args.dry_run:
-            print(f"\n{'='*60}")
-            print("DRY RUN — Evolver prompt:")
-            print(f"{'='*60}")
-            print(prompt[:3000])
+            logger.info(f"\n{'='*60}")
+            logger.info("DRY RUN — Evolver prompt:")
+            logger.info(f"{'='*60}")
+            logger.info(prompt[:3000])
             if len(prompt) > 3000:
-                print(f"... [{len(prompt) - 3000} chars truncated]")
-            print(f"\nPrompt length: {len(prompt)} chars")
+                logger.info(f"... [{len(prompt) - 3000} chars truncated]")
+            logger.info(f"Prompt length: {len(prompt)} chars")
             return "(dry-run skill placeholder)"
 
-        print(f"\n  Calling Evolver ({self.args.evolver_model})...")
+        logger.info(f"  Calling Evolver ({self.args.evolver_model})...")
         import anthropic
 
         client = anthropic.Anthropic()
@@ -516,7 +576,7 @@ class SDKEvoTest:
             messages=[{"role": "user", "content": prompt}],
         )
         skill_text = message.content[0].text
-        print(f"  Evolver produced skill ({len(skill_text)} chars)")
+        logger.info(f"  Evolver produced skill ({len(skill_text)} chars)")
         return skill_text
 
     def _build_evolver_prompt(self, parent_node, trajectory_data_list):
@@ -692,12 +752,12 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
         }
         with open(STATE_FILE, "w") as f:
             json.dump(state, f, indent=2, default=str)
-        print(f"  State saved to {STATE_FILE} ({len(self.nodes)} nodes)")
+        logger.info(f"  State saved to {STATE_FILE} ({len(self.nodes)} nodes)")
 
     def load_state(self):
         """Load state from checkpoint. Returns True if successful."""
         if not STATE_FILE.exists():
-            print(f"  No state file found at {STATE_FILE}")
+            logger.warning(f"  No state file found at {STATE_FILE}")
             return False
         with open(STATE_FILE, "r") as f:
             state = json.load(f)
@@ -706,7 +766,7 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
         self.best_score = state["best_score"] if state["best_score"] is not None else float("-inf")
         self.last_episode_score = state["last_episode_score"]
         self.completed_episodes = state["completed_episodes"]
-        print(
+        logger.info(
             f"  Resumed from {STATE_FILE}: "
             f"{self.completed_episodes} episodes, "
             f"{len(self.nodes)} nodes, "
@@ -721,39 +781,43 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
         """Main EvoTest loop (async)."""
         start_time = time.time()
 
+        # Setup logging — writes to evotest_state_sdk/evotest_sdk.log
+        log_path = setup_evotest_logging(STATE_DIR)
+
         # Resume or fresh start
         if self.args.resume:
             if not self.load_state():
-                print("  Cannot resume — starting fresh")
+                logger.info("  Cannot resume — starting fresh")
 
         start_episode = self.completed_episodes
         total_episodes = self.args.episodes
 
         if start_episode >= total_episodes:
-            print(
+            logger.info(
                 f"Already completed {start_episode} episodes (target={total_episodes}). "
                 f"Increase --episodes to continue."
             )
             return
 
         model_label = self.args.litellm_model or self.args.model
-        print(f"\n{'='*70}")
-        print(f"EvoTest SDK — Episodes {start_episode}..{total_episodes - 1}")
-        print(f"  Model: {model_label}")
-        print(f"  Evolver: {self.args.evolver_model}")
-        print(f"  Pathologies: {', '.join(self.args.pathologies)}")
-        print(f"  Split: {self.args.split}")
-        print(f"  Annotate clinical: {self.args.annotate_clinical}")
-        print(f"  Max turns: {self.args.max_turns}")
-        print(f"  UCB c={self.args.exploration_constant}, alpha={self.args.depth_constant}")
-        print(f"  Drop threshold: {self.args.drop_threshold}")
-        print(f"{'='*70}\n")
+        logger.info(f"{'='*70}")
+        logger.info(f"EvoTest SDK — Episodes {start_episode}..{total_episodes - 1}")
+        logger.info(f"  Model: {model_label}")
+        logger.info(f"  Evolver: {self.args.evolver_model}")
+        logger.info(f"  Pathologies: {', '.join(self.args.pathologies)}")
+        logger.info(f"  Split: {self.args.split}")
+        logger.info(f"  Annotate clinical: {self.args.annotate_clinical}")
+        logger.info(f"  Max turns: {self.args.max_turns}")
+        logger.info(f"  UCB c={self.args.exploration_constant}, alpha={self.args.depth_constant}")
+        logger.info(f"  Drop threshold: {self.args.drop_threshold}")
+        logger.info(f"  Log file: {log_path}")
+        logger.info(f"{'='*70}")
 
         for episode_num in range(start_episode, total_episodes):
             ep_start = time.time()
-            print(f"\n{'='*70}")
-            print(f"EPISODE {episode_num}")
-            print(f"{'='*70}")
+            logger.info(f"{'='*70}")
+            logger.info(f"EPISODE {episode_num}")
+            logger.info(f"{'='*70}")
 
             if episode_num == 0 and not self.nodes:
                 # --- Episode 0: Baseline or seed skill ---
@@ -762,14 +826,14 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                     skill_path = Path(self.args.initial_skill)
                     if skill_path.exists():
                         skill_text = skill_path.read_text()
-                        print(f"  Using initial skill from {skill_path}")
+                        logger.info(f"  Using initial skill from {skill_path}")
                     else:
-                        print(f"  WARNING: {skill_path} not found, running without skill")
+                        logger.warning(f"  {skill_path} not found, running without skill")
 
-                print("  Running baseline episode...")
+                logger.info("  Running baseline episode...")
                 result = await self.run_episode(skill_text if skill_text else None, episode_num)
                 if result is None:
-                    print("  Episode 0 failed — aborting")
+                    logger.error("  Episode 0 failed — aborting")
                     return
 
                 composite, per_metric, per_pathology, traj_paths = result
@@ -804,14 +868,14 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                             trajectory_data_list.append(json.load(f))
 
                 # Evolve skill
-                print(f"  Evolving from node {parent_idx} (score={parent_node['score']:.3f})...")
+                logger.info(f"  Evolving from node {parent_idx} (score={parent_node['score']:.3f})...")
                 new_skill = self.evolve_skill(parent_node, trajectory_data_list)
 
                 # Run episode with new skill
-                print(f"  Running episode with evolved skill...")
+                logger.info(f"  Running episode with evolved skill...")
                 result = await self.run_episode(new_skill, episode_num)
                 if result is None:
-                    print(f"  Episode {episode_num} failed — creating failed node and continuing")
+                    logger.error(f"  Episode {episode_num} failed — creating failed node and continuing")
                     node = {
                         "idx": len(self.nodes),
                         "skill_text": new_skill,
@@ -856,48 +920,49 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                 if composite > self.best_score:
                     self.best_score = composite
                     self.best_node_idx = node["idx"]
-                    print(f"  *** NEW BEST: score={composite:.3f} (node {node['idx']}) ***")
+                    logger.info(f"  *** NEW BEST: score={composite:.3f} (node {node['idx']}) ***")
 
-            # Print episode summary
+            # Episode summary
             node = self.nodes[-1]
             ep_elapsed = time.time() - ep_start
-            print(f"\n  Episode {episode_num} summary:")
-            print(f"    Composite score: {node['score']:.3f}")
-            print(f"    Best so far:     {self.best_score:.3f} (node {self.best_node_idx})")
+            logger.info(f"  Episode {episode_num} summary:")
+            logger.info(f"    Composite score: {node['score']:.3f}")
+            logger.info(f"    Best so far:     {self.best_score:.3f} (node {self.best_node_idx})")
             if node.get("per_pathology"):
                 for p, s in node["per_pathology"].items():
-                    print(f"    {p:20s}: {s:.3f}")
-            print(f"    Tree size:       {len(self.nodes)} nodes")
-            print(f"    Duration:        {ep_elapsed:.0f}s")
+                    logger.info(f"    {p:20s}: {s:.3f}")
+            logger.info(f"    Tree size:       {len(self.nodes)} nodes")
+            logger.info(f"    Duration:        {ep_elapsed:.0f}s")
 
             self.completed_episodes = episode_num + 1
             self.save_state()
 
         # Final summary
         total_elapsed = time.time() - start_time
-        print(f"\n{'='*70}")
-        print(f"EVOTEST SDK COMPLETE")
-        print(f"{'='*70}")
-        print(f"  Episodes:     {self.completed_episodes}")
-        print(f"  Nodes:        {len(self.nodes)}")
-        print(f"  Best score:   {self.best_score:.3f} (node {self.best_node_idx})")
-        print(f"  Duration:     {total_elapsed:.0f}s ({total_elapsed/60:.1f}m)")
+        logger.info(f"{'='*70}")
+        logger.info(f"EVOTEST SDK COMPLETE")
+        logger.info(f"{'='*70}")
+        logger.info(f"  Episodes:     {self.completed_episodes}")
+        logger.info(f"  Nodes:        {len(self.nodes)}")
+        logger.info(f"  Best score:   {self.best_score:.3f} (node {self.best_node_idx})")
+        logger.info(f"  Duration:     {total_elapsed:.0f}s ({total_elapsed/60:.1f}m)")
+        logger.info(f"  Log file:     {log_path}")
 
         if self.best_node_idx is not None:
             best = self.nodes[self.best_node_idx]
             best_skill_path = self.skills_dir / f"episode_{best['episode_num']}.md"
-            print(f"  Best skill:   {best_skill_path}")
+            logger.info(f"  Best skill:   {best_skill_path}")
             if best.get("per_pathology"):
-                print(f"  Per-pathology:")
+                logger.info(f"  Per-pathology:")
                 for p, s in best["per_pathology"].items():
-                    print(f"    {p:20s}: {s:.3f}")
+                    logger.info(f"    {p:20s}: {s:.3f}")
 
-        # Print tree structure
-        print(f"\n  Tree structure:")
+        # Tree structure
+        logger.info(f"  Tree structure:")
         for n in self.nodes:
             indent = "  " * n["depth"]
             marker = " ***BEST***" if n["idx"] == self.best_node_idx else ""
-            print(
+            logger.info(
                 f"    {indent}node {n['idx']} "
                 f"(ep={n['episode_num']}, score={n['score']:.3f}, "
                 f"depth={n['depth']}, children={len(n['children_idxs'])})"
