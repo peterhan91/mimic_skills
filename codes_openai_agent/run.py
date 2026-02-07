@@ -245,14 +245,19 @@ async def main(args):
         )
 
     # Resolve sub-agent model (defaults to same as main model)
+    # Only wrap in LitellmModel if it contains "/" (e.g. "anthropic/claude-sonnet-4-5-20250929");
+    # plain strings like "gpt-4o-mini" are passed directly to the SDK.
     sub_agent_model = None
     if args.sub_agent_model:
-        from agents.extensions.models.litellm_model import LitellmModel as _LM
+        if "/" in args.sub_agent_model:
+            from agents.extensions.models.litellm_model import LitellmModel as _LM
 
-        sub_agent_model = _LM(
-            model=args.sub_agent_model,
-            **({"base_url": args.litellm_base_url} if args.litellm_base_url else {}),
-        )
+            sub_agent_model = _LM(
+                model=args.sub_agent_model,
+                **({"base_url": args.litellm_base_url} if args.litellm_base_url else {}),
+            )
+        else:
+            sub_agent_model = args.sub_agent_model
 
     # Build manager config
     config = ManagerConfig(

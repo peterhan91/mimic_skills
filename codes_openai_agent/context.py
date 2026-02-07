@@ -1,7 +1,7 @@
 """PatientContext — shared state passed through RunContextWrapper to all tools and agents."""
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -17,7 +17,7 @@ class PatientContext:
     patient_id: int
     patient_data: dict  # hadm_info_clean[id] dict from Hager's pickle
     lab_test_mapping_df: pd.DataFrame
-    model_name: str = "gpt-4o"
+    model_name: Any = "gpt-4o"  # str or LitellmModel instance
     annotate_clinical: bool = True
     skill_content: Optional[str] = None
 

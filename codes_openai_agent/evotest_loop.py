@@ -91,7 +91,7 @@ from evolve_skill import (
 from manager import ClinicalDiagnosisManager, ManagerConfig
 from evaluator_adapter import convert_sdk_result
 from hager_imports import load_hadm_from_file, load_evaluator
-from run import build_reference_tuple
+from run import build_reference_tuple, append_to_pickle_file
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -110,17 +110,6 @@ STATE_DIR = PROJECT_DIR / "evotest_state_sdk"
 STATE_FILE = STATE_DIR / "state.json"
 
 logger = logging.getLogger("evotest_sdk")
-
-
-def append_to_pickle_file(filename, data):
-    """Append a dict to a pickle file (binary append mode).
-
-    Matches Hager's utils/logging.py pattern for incremental, crash-resilient
-    result saving.
-    """
-    import pickle
-    with open(filename, "ab") as f:
-        pickle.dump(data, f)
 
 
 def setup_evotest_logging(log_dir):
@@ -382,7 +371,7 @@ class SDKEvoTest:
                     + 1.0 * min(s.get("Laboratory Tests", 0) / max_lab, 1.0)
                     + 1.0 * min(s.get("Imaging", 0) / 2.0, 1.0)
                     - 0.5 * min(s.get("Invalid Tools", 0), 2)
-                    - 0.3 * (1.0 - s.get("Action Parsing", 1))
+                    - 0.3 * s.get("Action Parsing", 0)
                 )
                 patient_scores.append(ps)
                 all_patient_scores.append(ps)

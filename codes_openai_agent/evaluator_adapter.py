@@ -12,7 +12,7 @@ import json
 from typing import Sequence, Tuple
 
 from models import DiagnosticResult
-from hager_imports import AgentAction, load_evaluator  # noqa: F401
+from hager_imports import AgentAction
 
 
 # Map SDK function_tool names back to Hager's tool names used in evaluation
