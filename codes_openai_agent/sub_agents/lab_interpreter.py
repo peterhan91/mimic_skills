@@ -59,4 +59,5 @@ def create_lab_interpreter_tool(model_name="gpt-4o-mini"):
             "with abnormal findings, clinical significance, and suggested follow-up."
         ),
         custom_output_extractor=_extract_lab_output,
+        max_turns=3,
     )

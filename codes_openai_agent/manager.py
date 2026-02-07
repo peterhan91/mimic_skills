@@ -5,15 +5,20 @@ creates a PatientContext, builds the orchestrator, runs diagnosis,
 and returns structured results with tracing.
 """
 
+import logging
 import os
 from dataclasses import dataclass
 from typing import Any, Optional
 
 import pandas as pd
-from agents import Runner, trace
+from agents import Runner, RunErrorHandlerResult, RunErrorHandlers, trace
 
 from context import PatientContext
+from hooks import ClinicalRunHooks
+from models import DiagnosticResult
 from sub_agents.orchestrator import create_orchestrator
+
+logger = logging.getLogger("sdk_agent")
 
 
 @dataclass
@@ -82,6 +87,25 @@ class ClinicalDiagnosisManager:
         )
 
         patient_history = patient_data["Patient History"].strip()
+        hooks = ClinicalRunHooks()
+
+        async def _max_turns_handler(handler_input):
+            """Graceful degradation: return best-effort diagnosis on turn limit."""
+            logger.warning(
+                f"Patient {patient_id}: max turns ({self.config.max_turns}) exceeded"
+            )
+            return RunErrorHandlerResult(
+                final_output=DiagnosticResult(
+                    diagnosis="Unable to reach diagnosis (max turns exceeded)",
+                    confidence="low",
+                    treatment="Recommend senior physician consultation",
+                    severity="unknown",
+                    key_evidence=[],
+                    differential=[],
+                    reasoning="Agent exceeded maximum allowed turns.",
+                ),
+                include_in_history=True,
+            )
 
         with trace(
             "clinical_diagnosis",
@@ -92,6 +116,23 @@ class ClinicalDiagnosisManager:
                 input=f"Patient History:\n{patient_history}",
                 context=context,
                 max_turns=self.config.max_turns,
+                hooks=hooks,
+                error_handlers=RunErrorHandlers(max_turns=_max_turns_handler),
             )
+
+        # Log token usage
+        usage = result.context_wrapper.usage
+        context.token_usage = {
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "total_tokens": usage.total_tokens,
+            "requests": usage.requests,
+        }
+        logger.info(
+            f"Patient {patient_id}: {usage.total_tokens} tokens "
+            f"({usage.input_tokens} in / {usage.output_tokens} out), "
+            f"{usage.requests} requests, "
+            f"{len(context.tool_call_log)} tool calls: {context.tool_call_log}"
+        )
 
         return result.final_output, result, context

@@ -58,4 +58,5 @@ def create_challenger_tool(model_name="gpt-4o-mini"):
             "Call this BEFORE committing to a final diagnosis."
         ),
         custom_output_extractor=_extract_challenger_output,
+        max_turns=3,
     )

@@ -296,6 +296,16 @@ The SDK produces `RunResult.new_items` (tool calls + outputs). `evaluator_adapte
 - `custom_parsings=0` always (SDK JSON validation = no parsing errors)
 - Lab itemids from `PatientContext.lab_itemid_log` are substituted for accurate lab scoring
 
+## Reference: Original OpenAI Agents SDK
+
+This agent is built on the [OpenAI Agents SDK](https://github.com/openai/openai-agents-python) (`pip install openai-agents`). Key reference materials:
+
+- **Repository**: https://github.com/openai/openai-agents-python
+- **Documentation**: https://openai.github.io/openai-agents-python/
+- **Examples** (patterns we adopt): https://github.com/openai/openai-agents-python/tree/main/examples
+  - `financial_research_agent/` — multi-agent orchestrator pattern (our architecture model)
+  - `agent_patterns/` — guardrails, hooks, input/output validation
+
 ## Comparison with LangChain Agent
 
 The LangChain agent lives in `codes_Hager/` and uses `scripts/evotest_clinical.py` for its EvoTest loop. The two are completely independent:

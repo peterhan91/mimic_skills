@@ -28,3 +28,5 @@ class PatientContext:
     imaging_done: bool = False
     lab_results_raw: list = field(default_factory=list)
     lab_itemid_log: list = field(default_factory=list)  # list[list[int]] for evaluator
+    tool_call_log: list = field(default_factory=list)  # Tool call ordering for hooks
+    token_usage: dict = field(default_factory=dict)  # Token counts from Runner

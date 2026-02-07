@@ -5,9 +5,10 @@ Uses direct tools (PE, Labs, Imaging, DiagCrit) and sub-agent tools
 DiagnosticResult via structured output.
 """
 
-from agents import Agent, RunContextWrapper
+from agents import Agent, ModelSettings, RunContextWrapper
 
 from context import PatientContext
+from guardrails import diagnosis_guardrail
 from models import DiagnosticResult
 from tools import (
     physical_examination,
@@ -88,4 +89,6 @@ def create_orchestrator(model_name="gpt-4o", sub_agent_model_name=None) -> Agent
         ],
         output_type=DiagnosticResult,
         model=model_name,
+        model_settings=ModelSettings(temperature=0.0, parallel_tool_calls=False),
+        output_guardrails=[diagnosis_guardrail],
     )
