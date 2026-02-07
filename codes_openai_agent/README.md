@@ -206,6 +206,22 @@ python codes_openai_agent/evotest_loop.py --resume --episodes 15
 python codes_openai_agent/evotest_loop.py --dry-run --episodes 2
 ```
 
+### Clinical guidelines injection
+
+The Evolver automatically loads evidence-based clinical practice guidelines (extracted from PubMed and NICE) to ground the generated skills in peer-reviewed diagnostic and treatment protocols. This is in addition to the discharge summary evidence already used.
+
+Guidelines are loaded from `guidelines/{pathology}/evolver_context.md` (~3-4KB per pathology, ~15KB total). To regenerate them from the source JSONL:
+
+```bash
+python scripts/parse_guidelines.py --input open_guidelines.jsonl --output-dir guidelines
+```
+
+To disable guidelines (for ablation):
+
+```bash
+python codes_openai_agent/evotest_loop.py --episodes 10 --no-guidelines
+```
+
 ### Full `evotest_loop.py` options
 
 ```
@@ -226,6 +242,8 @@ Evolution:
   --drop-threshold        Force-best-after-drop threshold (default: 1.0)
   --force-best-after-drop / --no-force-best-after-drop  (default: on)
   --initial-skill         Seed skill for episode 0
+  --guidelines-dir        Path to guidelines/ directory (default: auto-detect)
+  --no-guidelines         Disable clinical guidelines in Evolver prompt
 
 Control:
   --resume    Resume from evotest_state_sdk/state.json

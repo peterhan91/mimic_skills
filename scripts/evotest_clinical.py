@@ -68,6 +68,8 @@ from evolve_skill import (
     format_trajectory_summary,
     format_discharge_summary,
     build_aggregate_table,
+    load_guidelines_context,
+    DEFAULT_GUIDELINES_DIR,
 )
 
 # ---------------------------------------------------------------------------
@@ -140,6 +142,14 @@ class ClinicalEvoTest:
         self.base_models = os.environ.get(
             "HF_HOME", os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
         )
+
+        # Load clinical guidelines for Evolver context
+        self.guidelines_context = ""
+        if not getattr(args, "no_guidelines", False):
+            gdir = getattr(args, "guidelines_dir", None) or DEFAULT_GUIDELINES_DIR
+            self.guidelines_context = load_guidelines_context(gdir, pathologies=PATHOLOGIES)
+            if self.guidelines_context:
+                print(f"  Loaded clinical guidelines ({len(self.guidelines_context)} chars) from {gdir}")
 
     # ------------------------------------------------------------------
     # UCB Tree
@@ -476,6 +486,17 @@ class ClinicalEvoTest:
                 f"```markdown\n{parent_node['skill_text']}\n```\n\n"
             )
 
+        # --- Section 5: Clinical guidelines ---
+        guidelines_section = ""
+        if self.guidelines_context:
+            guidelines_section = (
+                f"## Evidence-Based Clinical Guidelines\n\n"
+                f"The following are condensed extracts from peer-reviewed clinical practice guidelines "
+                f"(PubMed, NICE). Use these to ground your skill in evidence-based diagnostic and "
+                f"treatment protocols.\n\n"
+                f"{self.guidelines_context}\n\n"
+            )
+
         prompt = f"""You are a clinical AI system optimizer. Your task is to analyze diagnostic agent trajectories and generate an improved clinical reasoning skill.
 
 ## Evolution History
@@ -490,7 +511,7 @@ class ClinicalEvoTest:
 
 {metric_section}
 
-{parent_skill_section}## Failed Trajectories with Gap Analysis
+{parent_skill_section}{guidelines_section}## Failed Trajectories with Gap Analysis
 
 {gap_section}
 
@@ -500,7 +521,7 @@ Generate an improved GENERAL clinical reasoning workflow skill for diagnosing pa
 
 1. **Teach hypothesis-driven diagnostic reasoning** — maintain a running differential diagnosis, and choose each test to maximally reduce uncertainty between remaining hypotheses
 2. **Address the specific failure patterns above** — focus on what went wrong and teach the correct approach
-3. **Be grounded in what real doctors did** — use the discharge summary evidence
+3. **Be grounded in evidence** — use both the discharge summary evidence AND the clinical practice guidelines provided
 4. **Work across ALL pathologies** — must handle appendicitis, cholecystitis, diverticulitis, pancreatitis and any other acute abdominal pain cause
 5. **Stay under 500 tokens** — concise, actionable instructions
 6. **NOT use disease names** — use ____ as a mask for any disease or procedure name that would reveal the diagnosis
@@ -795,6 +816,14 @@ def main():
     parser.add_argument(
         "--initial-skill", type=str, default=None,
         help="Path to initial seed skill for episode 0 (optional)"
+    )
+    parser.add_argument(
+        "--guidelines-dir", type=str, default=None,
+        help="Path to guidelines/ directory (default: auto-detect from project root)"
+    )
+    parser.add_argument(
+        "--no-guidelines", action="store_true",
+        help="Disable clinical guidelines injection into Evolver prompt"
     )
     parser.add_argument(
         "--resume", action="store_true",

@@ -35,6 +35,42 @@ import os
 import sys
 from pathlib import Path
 
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+DEFAULT_GUIDELINES_DIR = PROJECT_DIR / "guidelines"
+
+
+def load_guidelines_context(guidelines_dir, pathologies=None):
+    """Load per-pathology evolver_context.md files and combine them.
+
+    Args:
+        guidelines_dir: Path to guidelines/ directory containing per-pathology subdirs.
+        pathologies: List of pathology names to load. If None, loads all available.
+
+    Returns:
+        Combined guideline text, or empty string if no guidelines found.
+    """
+    guidelines_dir = Path(guidelines_dir)
+    if not guidelines_dir.exists():
+        return ""
+
+    if pathologies is None:
+        pathologies = ["appendicitis", "cholecystitis", "diverticulitis", "pancreatitis"]
+
+    parts = []
+    for pathology in pathologies:
+        context_file = guidelines_dir / pathology / "evolver_context.md"
+        if context_file.exists():
+            parts.append(context_file.read_text())
+
+    if not parts:
+        # Fallback: try combined file
+        combined = guidelines_dir / "all_pathologies_context.md"
+        if combined.exists():
+            return combined.read_text()
+        return ""
+
+    return "\n\n".join(parts)
+
 
 def load_trajectories(path):
     """Load trajectory JSON from extract_trajectories.py."""
@@ -156,7 +192,7 @@ def build_aggregate_table(all_data):
     return "\n".join(lines)
 
 
-def build_evolver_prompt(all_data, all_failures, prev_skill=None):
+def build_evolver_prompt(all_data, all_failures, prev_skill=None, guidelines_context=None):
     """Construct the full Evolver prompt from multiple pathologies."""
     pathologies = [d["pathology"] for d in all_data]
     total_n = sum(d["n_patients"] for d in all_data)
@@ -199,13 +235,24 @@ The following skill was used in the runs above. Analyze where it helped and wher
 
 """
 
+    guidelines_section = ""
+    if guidelines_context:
+        guidelines_section = f"""## Evidence-Based Clinical Guidelines
+
+The following are condensed extracts from peer-reviewed clinical practice guidelines (PubMed, NICE).
+Use these to ground your skill in evidence-based diagnostic and treatment protocols.
+
+{guidelines_context}
+
+"""
+
     prompt = f"""You are a clinical AI system optimizer. Your task is to analyze diagnostic agent trajectories and real discharge summaries from {total_n} patients across {len(pathologies)} pathologies ({pathology_str}), then generate an improved clinical reasoning skill.
 
 ## Current Agent Performance
 
 {build_aggregate_table(all_data)}
 
-{prev_skill_section}## Failed Trajectories with Gap Analysis
+{prev_skill_section}{guidelines_section}## Failed Trajectories with Gap Analysis
 
 Below are patients where the agent failed across different pathologies. For each, you see:
 1. What the agent did (its trajectory)
@@ -220,7 +267,7 @@ Generate a GENERAL clinical reasoning workflow skill for diagnosing patients pre
 
 1. **Teach systematic diagnostic reasoning** — the same workflow regardless of final diagnosis
 2. **Address the specific failure patterns above** — focus on what went wrong and teach the correct approach
-3. **Be grounded in what real doctors did** — use the discharge summary evidence, not abstract guidelines
+3. **Be grounded in evidence** — use both the discharge summary evidence AND the clinical practice guidelines provided
 4. **Work across ALL pathologies** — must handle {pathology_str} and any other acute abdominal pain cause
 5. **Stay under 500 tokens** — concise, actionable instructions
 6. **NOT use disease names** — use ____ as a mask for any disease or procedure name that would reveal the diagnosis (e.g., write "surgical intervention" instead of a specific procedure name)
@@ -250,7 +297,8 @@ def call_anthropic(prompt, model):
     return message.content[0].text
 
 
-def evolve_skill(trajectories_paths, model, output_path, prev_skill_path=None, dry_run=False):
+def evolve_skill(trajectories_paths, model, output_path, prev_skill_path=None,
+                  guidelines_dir=None, dry_run=False):
     """Full evolution pipeline: load -> analyze -> generate -> save."""
     # Load all trajectory files
     all_data = []
@@ -282,7 +330,17 @@ def evolve_skill(trajectories_paths, model, output_path, prev_skill_path=None, d
                 prev_skill = parts[2].strip()
         print(f"Loaded previous skill from {prev_skill_path} ({len(prev_skill)} chars)")
 
-    prompt = build_evolver_prompt(all_data, all_failures, prev_skill=prev_skill)
+    # Load clinical guidelines
+    guidelines_context = None
+    gdir = guidelines_dir or DEFAULT_GUIDELINES_DIR
+    if Path(gdir).exists():
+        pathologies = [d["pathology"] for d in all_data]
+        guidelines_context = load_guidelines_context(gdir, pathologies=pathologies)
+        if guidelines_context:
+            print(f"Loaded clinical guidelines ({len(guidelines_context)} chars) from {gdir}")
+
+    prompt = build_evolver_prompt(all_data, all_failures, prev_skill=prev_skill,
+                                  guidelines_context=guidelines_context)
 
     if dry_run:
         print(f"\n{'='*60}")
@@ -329,6 +387,14 @@ def main():
         help="Path to previous skill for iterative refinement"
     )
     parser.add_argument(
+        "--guidelines-dir", type=str, default=None,
+        help="Path to guidelines/ directory (default: auto-detect from project root)"
+    )
+    parser.add_argument(
+        "--no-guidelines", action="store_true",
+        help="Disable clinical guidelines injection"
+    )
+    parser.add_argument(
         "--dry-run", action="store_true",
         help="Print the Evolver prompt without calling the API"
     )
@@ -338,8 +404,11 @@ def main():
         print("ERROR: ANTHROPIC_API_KEY environment variable is required")
         sys.exit(1)
 
+    guidelines_dir = None if args.no_guidelines else args.guidelines_dir
     evolve_skill(args.trajectories, args.model, args.output,
-                 prev_skill_path=args.prev_skill, dry_run=args.dry_run)
+                 prev_skill_path=args.prev_skill,
+                 guidelines_dir=guidelines_dir,
+                 dry_run=args.dry_run)
 
 
 if __name__ == "__main__":

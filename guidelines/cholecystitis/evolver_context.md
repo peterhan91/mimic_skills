@@ -1,0 +1,21 @@
+## Clinical Guidelines: Cholecystitis
+
+### WSES 2020
+
+## Section 7. antibiotic treatment of acc
+Which is the optimal antibiotic treatment for patients with uncomplicated ACC? 7.1 In uncomplicated ACC, we recommend against the routine use of postoperative antibiotics when the focus of infection is controlled by cholecystectomy. #QoE: high; SoR: strong# An open-label non-inferiority prospective controlled trial by Regimbau et al. [bib_ref] Effect of Postoperative Antibiotic Administration on Postoperative Infection Following Cholecystectomy for Acute..., Regimbeau [/bib_ref] randomized 414 patients who underwent cholecystectomy for uncomplicated ACC to either no antibiotics after surgery or continuation of the preoperative antibiotic regimen for 5 days. An imputed intention-to-treat analysis showed no difference in the incidence of postoperative infection rates: 17% (35 out of 207) in the no-treatment group compared with 15% (31 out of 207) in the antibiotic group (absolute difference 1.93%; 95% CI − 8. .
+No studies were found on this topic since the publication of the 2016 WSES Guidelines on ACC.
+Which is the optimal antibiotic treatment for patients with complicated ACC?
+7.2 In complicated ACC, we recommend prescribing the antimicrobial regimen based on the presumed pathogens involved and the risk factors for major resistance patterns. #QoE: high; SoR: strong# Empiric antibiotic treatment should be commenced according to the most frequently isolated microorganisms, taking into consideration the local trends of antibiotic resista
+[...truncated...]
+### Tokyo Guidelines: Diagnostic Criteria
+
+## Diagnostic criteria for acute cholecystitis
+Diagnosis is the starting point of the management of acute cholecystitis, and prompt and timely diagnosis should lead to early treatment and lower mortality and morbidity. Specifi c diagnostic criteria are necessary to accurately diagnose typical, as well as atypical cases. The Guidelines propose diagnostic criteria for acute cholecystitis [fig_ref] Table 1: Diagnostic criteria for acute cholecystitis Imaging fi ndings [/fig_ref]. C-reactive protein (CRP) is not commonly measured in many countries. However, because acute cholecystitis is usually associatied with an elevation of CRP level by 3 mg/dl or more, CRP was included. Diagnosis of acute cholecystitis by elevation of CRP level (3 mg/dl or more), with ultrasonographic fi ndings suggesting acute cholecystitis, has a sensitivity of 97%, specifi city of 76%, and positive predictive value of 95% (level 1b). [bib_ref] Diagnostic accuracy of ultrasonography and C-reactive protein concentration in acute cholecystitis: a..., Juvonen [/bib_ref] After the discussion during the Tokyo International Consensus Meeting, almost unanimous agreement was achieved on the criteria [fig_ref] Table 2: Answer pad responses on the diagnostic criteria for acute cholecystitis [/fig_ref]. However, 19% of the panelists from abroad expressed the necessity for minor modifi cations, because, in the provisional version, the diagnostic criteria did not include technetium hepatobiliery iminodiacetic acid (Tc-
+[...truncated...]
+### Tokyo Guidelines: Revised Criteria
+
+## Assessment of tg07 diagnostic criteria and severity assessment criteria for acute cholecystitis
+The 451 patients who were operated on for cholecystectomy comprised 255 male patients and 196 female patients with a mean age of 63.9 ± 14.0 years. 227 of the 451 patients enrolled were given a final pathological diagnosis of acute cholecystitis. The prevalence of acute cholecystitis in the cohort was 50.3 %. Based on the diagnostic criteria in TG07, a definite diagnosis of acute cholecystitis was made in 224 patients. Diagnostic criteria were not met in the remaining 227 patients.
+We constructed 2 9 2 contingency tables between pathologically proven acute cholecystitis and acute cholecystitis diagnosed by TG07 criteria. There were 209 truepositive cases, 15 false-positive cases, 18 false-negative cases, and 209 true
+[...truncated...]

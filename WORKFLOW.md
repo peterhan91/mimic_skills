@@ -246,6 +246,29 @@ branch from episode 3 instead of building on a bad skill.
    locally via HuggingFace and needs GPU. The script calls `run.py` as a
    subprocess, so run `evotest_clinical.py` on the GPU server itself.
 
+### Clinical Guidelines
+
+The Evolver automatically loads evidence-based clinical practice guidelines
+(PubMed, NICE) to ground evolved skills in peer-reviewed diagnostic and treatment
+protocols. Guidelines are loaded from `guidelines/{pathology}/evolver_context.md`
+(~3-4KB per pathology, ~15KB total) and injected as a dedicated section in the
+Evolver prompt — alongside the discharge summaries and failed trajectories.
+
+**Guidelines are ON by default.** You'll see this in the output:
+```
+Loaded clinical guidelines (14297 chars) from /path/to/guidelines
+```
+
+To regenerate guidelines from the source JSONL:
+```bash
+python scripts/parse_guidelines.py --input open_guidelines.jsonl --output-dir guidelines
+```
+
+To disable guidelines (for ablation comparison):
+```bash
+python scripts/evotest_clinical.py --episodes 10 --no-guidelines
+```
+
 ### Quick Validation (Dry Run)
 
 Prints all subprocess commands and the Evolver prompt without executing anything.
@@ -258,7 +281,7 @@ python scripts/evotest_clinical.py --dry-run --episodes 2
 ### Running the Full Loop
 
 ```bash
-# Standard run: 10 episodes, Qwen3-30B-A3B, Opus as Evolver
+# Standard run: 10 episodes, Qwen3-30B-A3B, Opus as Evolver, guidelines ON
 python scripts/evotest_clinical.py \
     --episodes 10 \
     --model Qwen3_30B_A3B \
@@ -317,6 +340,8 @@ python scripts/evotest_clinical.py --help
 --drop-threshold       Force-best-after-drop threshold (default: 1.0)
 --force-best-after-drop / --no-force-best-after-drop
 --initial-skill PATH   Seed skill for episode 0 (optional)
+--guidelines-dir DIR   Path to guidelines/ directory (default: auto-detect)
+--no-guidelines        Disable clinical guidelines in Evolver prompt
 --resume               Resume from evotest_state/state.json
 --dry-run              Print commands without executing
 ```
@@ -458,6 +483,7 @@ git pull
 | `scripts/evolve_skill.py` | Done | Evolver: analyze trajectories → generate improved skill |
 | `scripts/sanitize_skill.py` | Done | Remove disease name leakage from skills |
 | `scripts/compare_runs.py` | Done | Side-by-side comparison of two runs |
+| `scripts/parse_guidelines.py` | Done | Extract disease-specific guidelines from `open_guidelines.jsonl` |
 | `scripts/run_experiment.sh` | Done | Single-pathology evolution cycle (bash) |
 | `scripts/run_experiment_multi.sh` | Done | Multi-pathology evolution cycle (bash) |
 | `scripts/run_iterations.sh` | Done | Multi-version linear orchestrator (bash) |
@@ -498,6 +524,7 @@ mimic_skills/
   EVOTEST_ADAPTATION.md              # EvoTest integration plan
   WORKFLOW.md                        # This file
   EXAMPLE_WALKTHROUGH.md             # Concrete walkthrough of one cycle
+  open_guidelines.jsonl              # 37,970 clinical guidelines (gitignored)
   scripts/
     split_data.py                    # Split MIMIC-CDM pkl → train/test/remaining
     prepare_split_for_hager.py       # Copy split as *_hadm_info_first_diag.pkl
@@ -506,10 +533,20 @@ mimic_skills/
     evolve_skill.py                  # Evolver: trajectories → improved skill
     sanitize_skill.py                # Remove disease name leakage
     compare_runs.py                  # Side-by-side comparison
+    parse_guidelines.py              # Extract disease-specific guidelines from JSONL
     run_experiment.sh                # Single-pathology bash pipeline
     run_experiment_multi.sh          # Multi-pathology bash pipeline
     run_iterations.sh                # Multi-version linear orchestrator
     evotest_clinical.py              # Automated EvoTest loop with UCB tree
+  guidelines/
+    all_pathologies_context.md       # Combined guidelines (~15KB)
+    appendicitis/
+      evolver_context.md             # Condensed for Evolver (~3KB)
+      summary.md                     # Fuller summary (~10KB)
+      full/                          # Complete guideline text (gitignored)
+    cholecystitis/                   # Same structure
+    diverticulitis/                  # Same structure
+    pancreatitis/                    # Same structure
   data_splits/
     appendicitis/
       train.pkl (10)
