@@ -243,6 +243,98 @@ each metric, and whether approaches are complementary or redundant.
 
 ---
 
+## Approach 6: OpenAI Agents SDK Rewrite
+
+### Overview
+
+Replace Hager's LangChain ZeroShotAgent with the [OpenAI Agents SDK](https://github.com/openai/openai-agents-python)
+(`pip install openai-agents`). This is a lightweight, production-ready framework
+for multi-agent workflows (successor to OpenAI's "Swarm"). Full analysis in
+[docs/openai_agents_sdk.md](docs/openai_agents_sdk.md).
+
+### Why This Matters
+
+The SDK directly eliminates two of the paper's top failure modes:
+
+| Failure Mode | Current Mitigation | SDK Solution |
+|---|---|---|
+| **#5 Tool hallucination** (every 2-5 patients) | Fuzzy matching + penalty | **Eliminated**: `@function_tool` + JSON schema constrains tool calls |
+| **#8 Phrasing sensitivity** (up to 18% swing) | Format instructions in prompt | **Eliminated**: `output_type=DiagnosticResult` (Pydantic) enforces schema |
+| **#2 Lab interpretation** (26-77% correct) | Approach 3 annotations | Agent-as-tool: dedicated lab interpreter sub-agent |
+| **#3 Skip PE** (53% PE first) | Prompt rules | Tool guardrails enforce ordering |
+| **#4 Treatment gaps** | Enhanced DiagCrit | Structured output requires treatment field |
+
+### Key Design Patterns to Adopt
+
+**1. Structured Diagnostic Output** — Agent loop won't terminate until the LLM
+produces a valid `DiagnosticResult` with diagnosis, confidence, evidence,
+differential, treatment, and severity fields. Eliminates parsing errors entirely.
+
+**2. Multi-Agent via Agents-as-Tools** — Dedicated sub-agents for lab interpretation
+and imaging interpretation. The orchestrator calls them as tools, gets structured
+results back, and continues reasoning. Addresses failure mode #2 without consuming
+prompt tokens.
+
+**3. Dynamic Skill Injection** — `Agent.instructions` accepts a function
+`(RunContextWrapper) -> str` that generates per-patient, per-pathology instructions
+at runtime. Skills, clinical guidelines, and patient context injected dynamically.
+
+**4. Tool Guardrails** — Input/output validation on each tool call. Can enforce
+PE-first ordering, reject nonsensical lab combinations, and annotate results
+before they reach the agent.
+
+**5. Built-in Tracing** — Every tool call, reasoning step, and handoff automatically
+captured as spans. Feeds directly into EvoTest's Evolver for trajectory analysis.
+
+**6. Model Flexibility** — Via LiteLLM integration, any model works: Llama 3.3 70B
+(local vLLM), Claude, GPT-4o, Gemini. Different agents can use different models
+(cheap specialist + strong orchestrator).
+
+### Implementation Plan
+
+**Phase 1: Parallel Prototype** — Build SDK-based agent alongside Hager's code.
+Same patient data, same PathologyEvaluator, apples-to-apples comparison.
+
+```
+codes_openai_agent/
+  agent.py              ← Agent + tools definition
+  tools.py              ← @function_tool implementations
+  context.py            ← PatientContext dataclass
+  evaluator_adapter.py  ← Adapt PathologyEvaluator for SDK trajectories
+  run.py                ← Runner.run() with skill injection
+```
+
+**Phase 2: Feature Adoption** — If full rewrite is too costly, selectively adopt
+high-value patterns into existing framework: structured output parsing (replace
+regex with Pydantic), tool validation, dynamic instruction generation.
+
+**Phase 3: Full Migration** — Replace LangChain agent if Phase 1 shows improvement.
+
+### Limitations
+
+- **No workflow enforcement**: Cannot enforce PE → Labs → Imaging at framework level
+  (relies on instructions; LangGraph better for strict ordering)
+- **Migration effort**: Rewriting tools + evaluation adapter is non-trivial
+- **OpenAI dependency**: Core framework designed for OpenAI API; other providers via
+  LiteLLM adapter
+
+### Updated Experiment Matrix
+
+```
+Experiment matrix (extended):
+  Baseline (LangChain)                  (no skill, original framework)
+  Approach 1 only                       (system rules)
+  Approach 2 only                       (examples)
+  Approach 3 only                       (tool augmentation)
+  Approach 5 full hybrid                (all approaches, LangChain)
+  Approach 6 baseline                   (SDK agent, no skill)          ← NEW
+  Approach 6 + skill                    (SDK agent + skill injection)  ← NEW
+  Approach 6 + multi-agent              (SDK + lab/imaging sub-agents) ← NEW
+  Paper mitigations + Approach 5        (everything combined, LangChain)
+```
+
+---
+
 ## Experiment Plan: Option A (Iterative Refinement)
 
 ### Concept
@@ -698,6 +790,8 @@ mimic_skills/
 │   ├── upskill.md                     # upskill blog post reference
 │   ├── medgemma-1.5-4b-it.md          # Model card
 │   ├── discharge_summary.md           # Sample discharge summary
+│   ├── openai_agents_sdk.md           # OpenAI Agents SDK analysis (Approach 6)
+│   ├── improvement_strategy.md        # Strategic analysis: how to best improve the agent
 │   └── 7583_EvoTest_Evolutionary_Test.pdf  # EvoTest paper
 ├── samples/                           # Sample data files
 │   └── discharge.txt                  # Sample discharge text
@@ -762,6 +856,8 @@ Known locations for `lab_test_mapping.pkl`:
 |---|---|
 | EvoTest paper | `./docs/7583_EvoTest_Evolutionary_Test.pdf` (in-repo) |
 | EvoTest repo (to fork) | https://github.com/yf-he/EvoTest (not yet cloned) |
+| OpenAI Agents SDK | https://github.com/openai/openai-agents-python — Approach 6 framework |
+| OpenAI Agents SDK docs | https://openai.github.io/openai-agents-python/ |
 | Clinical guidelines (PDFs) | `/Users/tianyuhan/Documents/GitHub/MIMIC-ReAct/guidelines/` |
 | Discharge summaries (for skill grounding) | `Discharge` field in each pkl, or `/Users/tianyuhan/Documents/data/mimiciv/3.1/note/discharge.csv` |
 
@@ -778,4 +874,9 @@ Known locations for `lab_test_mapping.pkl`:
 7. Run Option C for comprehensive skills
 8. Compare: Option A vs Option C vs paper mitigations vs hybrid
 9. Test across multiple models (Llama 3.3, GPT-3.5, GPT-4)
-10. Statistical analysis and write-up
+10. **Approach 6**: Build parallel SDK-based agent prototype (see `docs/openai_agents_sdk.md`)
+    - Implement `@function_tool` versions of PE, Labs, Imaging, DiagCrit
+    - Add `output_type=DiagnosticResult` for structured output
+    - Test agents-as-tools pattern for lab interpretation sub-agent
+    - Compare SDK agent vs LangChain agent on same patient set
+11. Statistical analysis and write-up
