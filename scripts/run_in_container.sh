@@ -102,6 +102,7 @@ echo ""
 # ============================================================
 # Launch container with everything inside
 # ============================================================
+CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-1,2}" \
 apptainer exec --nv --fakeroot \
     --overlay "$OVERLAY" \
     --bind "$HF_CACHE":/root/.cache/huggingface \
