@@ -29,7 +29,7 @@ HF_CACHE="/home/than/.cache/huggingface"
 PROJECT="/home/than/DeepLearning/mimic_skills"
 
 VLLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
-VLLM_TP=3
+VLLM_TP=2
 VLLM_GPU_UTIL=0.9
 VLLM_MAX_LEN=32768
 VLLM_PORT=8000
