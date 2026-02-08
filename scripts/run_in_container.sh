@@ -129,7 +129,7 @@ python -m vllm.entrypoints.openai.api_server \\
     --max-model-len $VLLM_MAX_LEN \\
     --port $VLLM_PORT \\
     $VLLM_EXTRA_ARGS \\
-    > /tmp/vllm.log 2>&1 &
+    2>&1 | tee /tmp/vllm.log &
 VLLM_PID=\$!
 
 # Cleanup on exit
@@ -137,24 +137,15 @@ trap 'echo \">>> Shutting down vLLM (PID \$VLLM_PID)...\"; kill \$VLLM_PID 2>/de
 
 # Wait for vLLM to be ready
 echo \">>> Waiting for vLLM (PID \$VLLM_PID) on port $VLLM_PORT...\"
-ELAPSED=0
 while ! curl -s localhost:$VLLM_PORT/health > /dev/null 2>&1; do
     if ! kill -0 \$VLLM_PID 2>/dev/null; then
-        echo 'ERROR: vLLM process died. Last 30 lines of log:'
-        tail -30 /tmp/vllm.log
-        exit 1
-    fi
-    if [ $VLLM_TIMEOUT -gt 0 ] && [ \$ELAPSED -ge $VLLM_TIMEOUT ]; then
-        echo 'ERROR: vLLM startup timed out after ${VLLM_TIMEOUT}s. Last 30 lines:'
-        tail -30 /tmp/vllm.log
-        kill \$VLLM_PID 2>/dev/null
+        echo 'ERROR: vLLM process died.'
         exit 1
     fi
     sleep 5
-    ELAPSED=\$((ELAPSED + 5))
-    echo \"  ... waiting (\${ELAPSED}s)\"
 done
-echo \">>> vLLM ready after \${ELAPSED}s\"
+echo ''
+echo \">>> vLLM ready!\"
 echo ''
 
 # Run experiment
