@@ -77,7 +77,7 @@ class CustomLLM(LLM):
             # vLLM serves model via OpenAI-compatible API — no local model loading,
             # but we still need the tokenizer for context length tracking.
             from transformers import AutoTokenizer
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, local_files_only=True)
             self.model = None
             print(f"Using vLLM server at {self.vllm_base_url} for {self.model_name}")
             return
