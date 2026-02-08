@@ -338,6 +338,34 @@ class ClinicalEvoTest:
         return composite, per_metric_avg, per_pathology
 
     # ------------------------------------------------------------------
+    # Baseline Caching
+    # ------------------------------------------------------------------
+    def load_baseline_from_trajectories(self, traj_dir):
+        """Load existing episode-0 trajectory JSONs and re-score with current formula.
+
+        Looks for evo_ep0_{pathology}.json in traj_dir for each pathology.
+        Returns (composite, per_metric, per_pathology, traj_paths) or None if files missing.
+        """
+        traj_dir = Path(traj_dir)
+        all_trajectory_data = []
+        trajectory_paths = []
+
+        for pathology in PATHOLOGIES:
+            traj_file = traj_dir / f"evo_ep0_{pathology}.json"
+            if not traj_file.exists():
+                logger.warning(f"  Baseline trajectory not found: {traj_file}")
+                return None
+            trajectory_paths.append(str(traj_file))
+            data = load_trajectories(str(traj_file))
+            all_trajectory_data.append(data)
+
+        if not all_trajectory_data:
+            return None
+
+        composite, per_metric, per_pathology = self.compute_composite_score(all_trajectory_data)
+        return composite, per_metric, per_pathology, trajectory_paths
+
+    # ------------------------------------------------------------------
     # Episode Orchestration
     # ------------------------------------------------------------------
     def run_episode(self, skill_text, episode_num):
@@ -734,8 +762,20 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                     else:
                         logger.warning(f"  {skill_path} not found, running without skill")
 
-                logger.info("  Running baseline episode...")
-                result = self.run_episode(skill_text if skill_text else None, episode_num)
+                # Try reusing cached baseline trajectories
+                result = None
+                if self.args.reuse_baseline:
+                    reuse_dir = Path(self.args.reuse_baseline)
+                    logger.info(f"  Reusing baseline trajectories from {reuse_dir}...")
+                    result = self.load_baseline_from_trajectories(reuse_dir)
+                    if result:
+                        logger.info(f"  Baseline loaded — composite: {result[0]:.3f} (re-scored with current formula)")
+                    else:
+                        logger.warning(f"  Could not load baseline from {reuse_dir}, running from scratch")
+
+                if result is None:
+                    logger.info("  Running baseline episode...")
+                    result = self.run_episode(skill_text if skill_text else None, episode_num)
                 if result is None:
                     logger.error("  Episode 0 failed — aborting")
                     return
@@ -960,6 +1000,12 @@ def main():
     parser.add_argument(
         "--no-guidelines", action="store_true",
         help="Disable clinical guidelines injection into Evolver prompt"
+    )
+    parser.add_argument(
+        "--reuse-baseline", type=str, default=None,
+        help="Path to directory with existing episode-0 trajectory JSONs "
+             "(evo_ep0_{pathology}.json). Skips re-running the agent for "
+             "episode 0 and re-scores with the current formula."
     )
     parser.add_argument(
         "--resume", action="store_true",

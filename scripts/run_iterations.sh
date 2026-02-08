@@ -123,6 +123,24 @@ if [ -n "$INITIAL_SKILL" ]; then
     fi
 fi
 
+# Auto-detect baseline trajectories for caching
+# Skip if resuming (state already has ep0) or if initial skill is set (cached
+# baseline may have been run with a different/no skill)
+TRAJ_DIR="$PROJECT_DIR/trajectories"
+if [ "$RESUME" = false ] && [ -z "$INITIAL_SKILL" ] && [ -d "$TRAJ_DIR" ]; then
+    BASELINE_OK=true
+    for PATHOLOGY in appendicitis cholecystitis diverticulitis pancreatitis; do
+        if [ ! -f "$TRAJ_DIR/evo_ep0_${PATHOLOGY}.json" ]; then
+            BASELINE_OK=false
+            break
+        fi
+    done
+    if [ "$BASELINE_OK" = true ]; then
+        echo "  Found existing baseline trajectories in $TRAJ_DIR — reusing"
+        EVOTEST_CMD+=(--reuse-baseline "$TRAJ_DIR")
+    fi
+fi
+
 # ============================================================
 # Run EvoTest
 # ============================================================
