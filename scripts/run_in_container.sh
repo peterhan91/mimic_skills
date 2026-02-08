@@ -33,7 +33,7 @@ VLLM_TP=2
 VLLM_GPU_UTIL=0.9
 VLLM_MAX_LEN=32768
 VLLM_PORT=8000
-VLLM_TIMEOUT=300  # seconds to wait for vLLM startup
+VLLM_TIMEOUT=600  # seconds to wait for vLLM startup
 
 # ============================================================
 # Build experiment command based on mode
