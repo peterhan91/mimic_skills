@@ -757,15 +757,18 @@ Following the paper's protocol:
 ```
 mimic_skills/
 ├── CLAUDE.md                          # This file
-├── WORKFLOW.md                        # Step-by-step workflow (local + GPU server)
-├── EXAMPLE_WALKTHROUGH.md             # Complete example of one evolution cycle
-├── EVOTEST_ADAPTATION.md              # EvoTest integration plan
+├── README.md                          # Quick-start overview
 ├── scripts/
 │   ├── split_data.py                  # Split MIMIC-CDM pkl → train/test/remaining
 │   ├── prepare_split_for_hager.py     # Copy split as {path}_hadm_info_first_diag.pkl
 │   ├── sanitize_skill.py              # Remove disease name leakage from skills
-│   ├── extract_trajectories.py        # TODO: Parse results pkl → JSON for Evolver
-│   └── compare_runs.py               # TODO: Side-by-side comparison of two runs
+│   ├── extract_trajectories.py        # Parse results pkl → JSON for Evolver
+│   ├── evolve_skill.py               # Call Opus to evolve skills from trajectories
+│   ├── compare_runs.py               # Side-by-side comparison of two runs
+│   ├── evaluate_run.py               # Run PathologyEvaluator on results
+│   ├── parse_guidelines.py           # Extract clinical guidelines to markdown
+│   ├── run_experiment.sh             # Run single pathology experiments
+│   └── run_experiment_multi.sh       # Loop over all 4 pathologies
 ├── data_splits/                       # Created by split_data.py
 │   ├── appendicitis/
 │   │   ├── train.pkl (10)
@@ -775,26 +778,28 @@ mimic_skills/
 │   ├── diverticulitis/ (10/100/134)
 │   └── pancreatitis/ (10/100/391)
 ├── traces/                            # Generated reasoning traces
-│   ├── option_a/                      # Iterative: one trace per seed case
-│   └── option_c/                      # Synthesis: one trace from many cases
 ├── skills/                            # Generated SKILL.md files (sanitized)
 │   ├── v1/acute_abdominal_pain.md     # General skill (all pathologies)
 │   ├── v2/acute_abdominal_pain.md     # Refined after v1 eval
+│   ├── evo/                           # EvoTest-generated episodes
 │   └── ...
 ├── results/                           # Evaluation results from GPU server
 ├── codes_Hager/                       # Hager's framework (modified)
+├── codes_openai_agent/                # OpenAI Agents SDK variant (Approach 6)
 ├── MIMIC-CDM-IV/                      # Patient data (2,400 curated cases)
-├── samples/                           # Sample JSON cases
+├── guidelines/                        # Clinical guideline summaries per pathology
 ├── docs/                              # Reference materials
+│   ├── WORKFLOW.md                    # Step-by-step workflow (local + GPU server)
+│   ├── EXAMPLE_WALKTHROUGH.md         # Complete example of one evolution cycle
+│   ├── EVOTEST_ADAPTATION.md          # EvoTest integration plan
 │   ├── Hager_Rueckert.md              # Paper notes
 │   ├── upskill.md                     # upskill blog post reference
-│   ├── medgemma-1.5-4b-it.md          # Model card
-│   ├── discharge_summary.md           # Sample discharge summary
 │   ├── openai_agents_sdk.md           # OpenAI Agents SDK analysis (Approach 6)
 │   ├── improvement_strategy.md        # Strategic analysis: how to best improve the agent
+│   ├── qwen3-a3b.md                   # Qwen3-30B-A3B model card
+│   ├── medgemma.md                    # MedGemma model card (historical)
+│   ├── discharge_summary.md           # Sample discharge summary
 │   └── 7583_EvoTest_Evolutionary_Test.pdf  # EvoTest paper
-├── samples/                           # Sample data files
-│   └── discharge.txt                  # Sample discharge text
 └── .gitignore
 ```
 

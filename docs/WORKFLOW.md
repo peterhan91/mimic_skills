@@ -521,9 +521,10 @@ git pull
 ```
 mimic_skills/
   CLAUDE.md                          # Master plan
-  EVOTEST_ADAPTATION.md              # EvoTest integration plan
-  WORKFLOW.md                        # This file
-  EXAMPLE_WALKTHROUGH.md             # Concrete walkthrough of one cycle
+  docs/
+    EVOTEST_ADAPTATION.md            # EvoTest integration plan
+    WORKFLOW.md                      # This file
+    EXAMPLE_WALKTHROUGH.md           # Concrete walkthrough of one cycle
   open_guidelines.jsonl              # 37,970 clinical guidelines (gitignored)
   scripts/
     split_data.py                    # Split MIMIC-CDM pkl → train/test/remaining

@@ -352,9 +352,10 @@ Models: Llama 3.3 70B (Actor), Opus (Evolver).
 
 ```
 mimic_skills/
-  EVOTEST_ADAPTATION.md              # This file
   CLAUDE.md                          # Main project plan (Option A, C, integration approaches)
-  docs/7583_EvoTest_Evolutionary_Test.pdf  # The EvoTest paper
+  docs/
+    EVOTEST_ADAPTATION.md            # This file
+    7583_EvoTest_Evolutionary_Test.pdf  # The EvoTest paper
   codes_Hager/...                    # Hager's clinical agent framework
   MIMIC-CDM-IV/                      # Patient data (curated test cases)
 ```
