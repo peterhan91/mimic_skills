@@ -33,7 +33,7 @@ VLLM_TP=2
 VLLM_GPU_UTIL=0.9
 VLLM_MAX_LEN=32768
 VLLM_PORT=8000
-VLLM_TIMEOUT=600  # seconds to wait for vLLM startup
+VLLM_TIMEOUT=0  # 0 = no limit, wait indefinitely for vLLM startup
 
 # ============================================================
 # Build experiment command based on mode
@@ -144,7 +144,7 @@ while ! curl -s localhost:$VLLM_PORT/health > /dev/null 2>&1; do
         tail -30 /tmp/vllm.log
         exit 1
     fi
-    if [ \$ELAPSED -ge $VLLM_TIMEOUT ]; then
+    if [ $VLLM_TIMEOUT -gt 0 ] && [ \$ELAPSED -ge $VLLM_TIMEOUT ]; then
         echo 'ERROR: vLLM startup timed out after ${VLLM_TIMEOUT}s. Last 30 lines:'
         tail -30 /tmp/vllm.log
         kill \$VLLM_PID 2>/dev/null
