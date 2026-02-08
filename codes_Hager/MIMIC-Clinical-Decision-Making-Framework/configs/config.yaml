@@ -34,5 +34,7 @@ save_probabilities: False
 
 annotate_clinical: False
 
+vllm_base_url:
+
 skill_path:
 skill_inject: examples

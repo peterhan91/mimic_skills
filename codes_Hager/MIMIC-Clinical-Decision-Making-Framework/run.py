@@ -64,6 +64,7 @@ def run(args: DictConfig):
     llm = CustomLLM(
         model_name=args.model_name,
         openai_api_key=args.openai_api_key,
+        vllm_base_url=args.get("vllm_base_url", None),
         tags=tags,
         max_context_length=args.max_context_length,
         exllama=args.exllama,

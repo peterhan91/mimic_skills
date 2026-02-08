@@ -10,9 +10,15 @@ from tenacity import (
     wait_random_exponential,
 )
 from transformers import GenerationConfig, StoppingCriteriaList
-from auto_gptq import exllama_set_max_input_length
+try:
+    from auto_gptq import exllama_set_max_input_length
+except ImportError:
+    exllama_set_max_input_length = None
 from langchain.llms.base import LLM
-from exllamav2.generator import ExLlamaV2Sampler
+try:
+    from exllamav2.generator import ExLlamaV2Sampler
+except ImportError:
+    ExLlamaV2Sampler = None
 import tiktoken
 
 from models.utils import create_stop_criteria, create_stop_criteria_exllama
@@ -35,6 +41,7 @@ class CustomLLM(LLM):
     self_consistency: bool = False
 
     openai_api_key: str = None
+    vllm_base_url: str = None
     tags: Dict[str, str] = None
 
     @property
@@ -65,6 +72,12 @@ class CustomLLM(LLM):
         torch.cuda.empty_cache()
 
         if self.model_name == "Human":
+            return
+        elif self.vllm_base_url:
+            # vLLM serves model via OpenAI-compatible API — no local loading
+            self.tokenizer = None
+            self.model = None
+            print(f"Using vLLM server at {self.vllm_base_url} for {self.model_name}")
             return
         elif self.openai_api_key:
             self.tokenizer = tiktoken.encoding_for_model(self.model_name)
@@ -319,6 +332,23 @@ class CustomLLM(LLM):
         self.probabilities = None
         if self.model_name == "Human":
             output = input(prompt)
+
+        elif self.vllm_base_url:
+            import requests
+            resp = requests.post(
+                f"{self.vllm_base_url}/completions",
+                json={
+                    "model": self.model_name,
+                    "prompt": prompt,
+                    "max_tokens": 1024,
+                    "temperature": 0.0,
+                    "stop": STOP_WORDS + stop,
+                    "seed": self.seed,
+                },
+                timeout=120,
+            )
+            resp.raise_for_status()
+            output = resp.json()["choices"][0]["text"]
 
         elif self.openai_api_key:
             messages = extract_sections(
