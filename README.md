@@ -45,6 +45,7 @@ patients each, split from MIMIC-CDM-IV.
 - [docs/WORKFLOW.md](docs/WORKFLOW.md) — Step-by-step workflow (local + GPU server)
 - [docs/EXAMPLE_WALKTHROUGH.md](docs/EXAMPLE_WALKTHROUGH.md) — Complete example of one evolution cycle
 - [docs/EVOTEST_ADAPTATION.md](docs/EVOTEST_ADAPTATION.md) — EvoTest integration plan
+- [docs/per_agent_skills.md](docs/per_agent_skills.md) — Per-sub-agent skill evolution architecture
 
 ## Key Scripts
 
@@ -61,3 +62,7 @@ patients each, split from MIMIC-CDM-IV.
 - Hager et al., "Evaluation and Mitigation of the Limitations of Large Language
   Models in Clinical Decision-Making", Nature Medicine, 2024
 - [MIMIC-CDM Framework](https://github.com/MIMIC-Clinical-Decision-Making/MIMIC-Clinical-Decision-Making-Framework)
+- [Anthropic Agent Skills](https://github.com/anthropics/skills) — Official skills
+  standard and examples ([spec](https://agentskills.io/specification),
+  [skill-creator reference](https://github.com/anthropics/skills/tree/main/skills/skill-creator))
+- [Agent Skills blog post](https://anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)

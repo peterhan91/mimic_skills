@@ -110,8 +110,61 @@ MAX_LAB_SCORE = {
 
 STATE_DIR = PROJECT_DIR / "evotest_state_sdk"
 STATE_FILE = STATE_DIR / "state.json"
+EPISODE_LOG = STATE_DIR / "episode_log.jsonl"
 
 logger = logging.getLogger("evotest_sdk")
+
+
+def format_duration(seconds):
+    """Format seconds into a human-readable string."""
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    m, s = divmod(int(seconds), 60)
+    if m < 60:
+        return f"{m}m {s}s"
+    h, m = divmod(m, 60)
+    return f"{h}h {m}m {s}s"
+
+
+def print_metrics_table(per_pathology, per_metric):
+    """Log a formatted metrics table after each episode."""
+    header = f"    {'Pathology':<18s} {'Composite':>9s} {'Dx':>5s} {'G.Dx':>5s} {'PE':>5s} {'Labs':>5s} {'Img':>5s} {'InvT':>5s}"
+    sep = "    " + "-" * len(header.strip())
+    logger.info(sep)
+    logger.info(header)
+    logger.info(sep)
+    for p, composite in per_pathology.items():
+        logger.info(f"    {p:<18s} {composite:>9.3f}")
+    logger.info(sep)
+    if per_metric:
+        dx = per_metric.get("Diagnosis", 0)
+        gdx = per_metric.get("Gracious Diagnosis", 0)
+        pe = per_metric.get("Physical Examination", 0)
+        labs = per_metric.get("Laboratory Tests", 0)
+        img = per_metric.get("Imaging", 0)
+        inv = per_metric.get("Invalid Tools", 0)
+        logger.info(
+            f"    {'AVERAGE':<18s} {'':>9s} {dx:>5.2f} {gdx:>5.2f} {pe:>5.2f} {labs:>5.2f} {img:>5.2f} {inv:>5.2f}"
+        )
+        logger.info(sep)
+
+
+def append_episode_jsonl(episode_num, composite, best_score, per_pathology, per_metric, duration_s, parent_idx, node_idx):
+    """Append one JSON line per episode to episode_log.jsonl."""
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    record = {
+        "episode": episode_num,
+        "node": node_idx,
+        "parent": parent_idx,
+        "composite": round(composite, 4),
+        "best": round(best_score, 4),
+        "duration_s": round(duration_s, 1),
+        "per_pathology": {k: round(v, 4) for k, v in per_pathology.items()} if per_pathology else {},
+        "per_metric": {k: round(v, 4) for k, v in per_metric.items()} if per_metric else {},
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+    }
+    with open(EPISODE_LOG, "a") as f:
+        f.write(json.dumps(record) + "\n")
 
 
 def setup_evotest_logging(log_dir):
@@ -459,8 +512,20 @@ class SDKEvoTest:
             manager = ClinicalDiagnosisManager(config)
 
             admissions = []
-            for pid_idx, patient_id in enumerate(patient_ids):
-                logger.info(f"    [{pid_idx + 1}/{len(patient_ids)}] Processing patient: {patient_id}")
+            try:
+                from tqdm import tqdm
+                patient_iter = tqdm(
+                    enumerate(patient_ids),
+                    total=len(patient_ids),
+                    desc=f"    {pathology:.<18s}",
+                    unit="pat",
+                    leave=True,
+                    bar_format="{desc} {bar:20} {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
+                )
+            except ImportError:
+                patient_iter = enumerate(patient_ids)
+            for pid_idx, patient_id in patient_iter:
+                logger.debug(f"    [{pid_idx + 1}/{len(patient_ids)}] Processing patient: {patient_id}")
 
                 try:
                     final_output, run_result, ctx = await manager.run(
@@ -721,7 +786,7 @@ Generate an improved GENERAL clinical reasoning workflow skill for diagnosing pa
 6. **NOT use disease names** — use ____ as a mask for any disease or procedure name that would reveal the diagnosis
 
 The skill should be written as markdown with clear step-by-step instructions:
-- When to do Physical Examination (should always be FIRST)
+- When to do Physical Examination and how to decide if it's needed
 - How to select labs based on exam findings (not shotgun ordering)
 - How to choose imaging modality based on suspected pathology location
 - How to interpret lab values in context
@@ -790,6 +855,7 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
     async def run(self):
         """Main EvoTest loop (async)."""
         start_time = time.time()
+        episode_durations = []  # Track for ETA calculation
 
         # Setup logging — writes to evotest_state_sdk/evotest_sdk.log
         log_path = setup_evotest_logging(STATE_DIR)
@@ -811,22 +877,31 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
 
         model_label = self.args.litellm_model or self.args.model
         logger.info(f"{'='*70}")
-        logger.info(f"EvoTest SDK — Episodes {start_episode}..{total_episodes - 1}")
-        logger.info(f"  Model: {model_label}")
-        logger.info(f"  Evolver: {self.args.evolver_model}")
-        logger.info(f"  Pathologies: {', '.join(self.args.pathologies)}")
-        logger.info(f"  Split: {self.args.split}")
-        logger.info(f"  Annotate clinical: {self.args.annotate_clinical}")
-        logger.info(f"  Max turns: {self.args.max_turns}")
+        logger.info(f"EvoTest SDK | {total_episodes} episodes | {len(self.args.pathologies)} pathologies")
+        logger.info(f"{'='*70}")
+        logger.info(f"  Model:            {model_label}")
+        logger.info(f"  Evolver:          {self.args.evolver_model}")
+        logger.info(f"  Pathologies:      {', '.join(self.args.pathologies)}")
+        logger.info(f"  Split:            {self.args.split}")
+        logger.info(f"  Annotate clinical:{self.args.annotate_clinical}")
+        logger.info(f"  Max turns:        {self.args.max_turns}")
         logger.info(f"  UCB c={self.args.exploration_constant}, alpha={self.args.depth_constant}")
-        logger.info(f"  Drop threshold: {self.args.drop_threshold}")
-        logger.info(f"  Log file: {log_path}")
+        logger.info(f"  Drop threshold:   {self.args.drop_threshold}")
+        logger.info(f"  Log file:         {log_path}")
+        logger.info(f"  Episode log:      {EPISODE_LOG}")
         logger.info(f"{'='*70}")
 
         for episode_num in range(start_episode, total_episodes):
             ep_start = time.time()
+            episodes_done = episode_num - start_episode
+            eta_str = ""
+            if episode_durations:
+                avg_dur = sum(episode_durations) / len(episode_durations)
+                remaining = (total_episodes - episode_num) * avg_dur
+                eta_str = f" | ETA: {format_duration(remaining)}"
+
             logger.info(f"{'='*70}")
-            logger.info(f"EPISODE {episode_num}")
+            logger.info(f"EPISODE {episode_num}/{total_episodes - 1} [{episodes_done}/{total_episodes - start_episode} done]{eta_str}")
             logger.info(f"{'='*70}")
 
             if episode_num == 0 and not self.nodes:
@@ -904,6 +979,8 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                     self.last_episode_score = 0.0
                     self.completed_episodes = episode_num + 1
                     self.save_state()
+                    ep_elapsed = time.time() - ep_start
+                    episode_durations.append(ep_elapsed)
                     continue
 
                 composite, per_metric, per_pathology, traj_paths = result
@@ -932,31 +1009,50 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                     self.best_node_idx = node["idx"]
                     logger.info(f"  *** NEW BEST: score={composite:.3f} (node {node['idx']}) ***")
 
-            # Episode summary
+            # Episode summary with metrics table
             node = self.nodes[-1]
             ep_elapsed = time.time() - ep_start
-            logger.info(f"  Episode {episode_num} summary:")
-            logger.info(f"    Composite score: {node['score']:.3f}")
-            logger.info(f"    Best so far:     {self.best_score:.3f} (node {self.best_node_idx})")
+            episode_durations.append(ep_elapsed)
+            avg_dur = sum(episode_durations) / len(episode_durations)
+            remaining_eps = total_episodes - (episode_num + 1)
+            eta = remaining_eps * avg_dur
+
+            logger.info(f"")
+            logger.info(f"  Episode {episode_num} completed in {format_duration(ep_elapsed)}")
+            logger.info(f"    Composite: {node['score']:.3f} | Best: {self.best_score:.3f} (node {self.best_node_idx})")
             if node.get("per_pathology"):
-                for p, s in node["per_pathology"].items():
-                    logger.info(f"    {p:20s}: {s:.3f}")
-            logger.info(f"    Tree size:       {len(self.nodes)} nodes")
-            logger.info(f"    Duration:        {ep_elapsed:.0f}s")
+                print_metrics_table(node["per_pathology"], node.get("per_metric", {}))
+            logger.info(f"    Tree: {len(self.nodes)} nodes | Avg: {format_duration(avg_dur)}/ep | ETA: {format_duration(eta)}")
+
+            # Append to structured episode log
+            append_episode_jsonl(
+                episode_num=episode_num,
+                composite=node["score"],
+                best_score=self.best_score,
+                per_pathology=node.get("per_pathology", {}),
+                per_metric=node.get("per_metric", {}),
+                duration_s=ep_elapsed,
+                parent_idx=node.get("parent_idx", -1),
+                node_idx=node["idx"],
+            )
 
             self.completed_episodes = episode_num + 1
             self.save_state()
 
         # Final summary
         total_elapsed = time.time() - start_time
+        logger.info(f"")
         logger.info(f"{'='*70}")
         logger.info(f"EVOTEST SDK COMPLETE")
         logger.info(f"{'='*70}")
         logger.info(f"  Episodes:     {self.completed_episodes}")
         logger.info(f"  Nodes:        {len(self.nodes)}")
         logger.info(f"  Best score:   {self.best_score:.3f} (node {self.best_node_idx})")
-        logger.info(f"  Duration:     {total_elapsed:.0f}s ({total_elapsed/60:.1f}m)")
+        logger.info(f"  Total time:   {format_duration(total_elapsed)}")
+        if episode_durations:
+            logger.info(f"  Avg/episode:  {format_duration(sum(episode_durations) / len(episode_durations))}")
         logger.info(f"  Log file:     {log_path}")
+        logger.info(f"  Episode log:  {EPISODE_LOG}")
 
         if self.best_node_idx is not None:
             best = self.nodes[self.best_node_idx]
@@ -967,7 +1063,19 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                 for p, s in best["per_pathology"].items():
                     logger.info(f"    {p:20s}: {s:.3f}")
 
+        # Score progression
+        if len(self.nodes) > 1:
+            logger.info(f"")
+            logger.info(f"  Score progression:")
+            max_score = max(n["score"] for n in self.nodes) if self.nodes else 1
+            for n in self.nodes:
+                bar_len = int(30 * n["score"] / max_score) if max_score > 0 else 0
+                bar = "#" * bar_len + "." * (30 - bar_len)
+                best_marker = " * best" if n["idx"] == self.best_node_idx else ""
+                logger.info(f"    Ep {n['episode_num']:>2d}: {bar} {n['score']:.3f}{best_marker}")
+
         # Tree structure
+        logger.info(f"")
         logger.info(f"  Tree structure:")
         for n in self.nodes:
             indent = "  " * n["depth"]

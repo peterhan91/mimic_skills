@@ -11,8 +11,10 @@ set -euo pipefail
 #   bash run_in_container.sh                              # default: multi v1
 #   bash run_in_container.sh multi v1 vLLM_Qwen3         # multi-pathology
 #   bash run_in_container.sh single cholecystitis v1      # single pathology
-#   bash run_in_container.sh evotest 10                   # EvoTest 10 episodes
-#   bash run_in_container.sh evotest --resume 15          # resume EvoTest
+#   bash run_in_container.sh evotest 10                   # EvoTest Hager 10 episodes
+#   bash run_in_container.sh evotest --resume 15          # resume Hager EvoTest
+#   bash run_in_container.sh evotest-sdk 10               # EvoTest SDK 10 episodes
+#   bash run_in_container.sh evotest-sdk 10 --resume      # resume SDK EvoTest
 # ============================================================
 
 # ============================================================
@@ -55,7 +57,13 @@ case "$EXPERIMENT" in
         ;;
     evotest)
         EXP_CMD="bash /workspace/scripts/run_iterations.sh $*"
-        DESC="EvoTest ($*)"
+        DESC="EvoTest Hager ($*)"
+        ;;
+    evotest-sdk)
+        EPISODES="${1:-10}"
+        shift || true
+        EXP_CMD="python /workspace/codes_openai_agent/evotest_loop.py --episodes $EPISODES --litellm-model openai/$VLLM_MODEL --litellm-base-url http://localhost:$VLLM_PORT/v1 --evolver-model claude-opus-4-6 $*"
+        DESC="EvoTest SDK ($EPISODES episodes)"
         ;;
     shell)
         EXP_CMD="bash"
@@ -63,7 +71,7 @@ case "$EXPERIMENT" in
         ;;
     *)
         echo "Unknown experiment: $EXPERIMENT"
-        echo "Usage: $0 {multi|single|evotest|shell} [args...]"
+        echo "Usage: $0 {multi|single|evotest|evotest-sdk|shell} [args...]"
         exit 1
         ;;
 esac
@@ -115,6 +123,7 @@ python -m vllm.entrypoints.openai.api_server \\
     --tensor-parallel-size $VLLM_TP \\
     --gpu-memory-utilization $VLLM_GPU_UTIL \\
     --max-model-len $VLLM_MAX_LEN \\
+    --enable-auto-tool-choice \\
     --port $VLLM_PORT \\
     > /tmp/vllm.log 2>&1 &
 VLLM_PID=\$!

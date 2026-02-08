@@ -273,7 +273,7 @@ Generate a GENERAL clinical reasoning workflow skill for diagnosing patients pre
 6. **NOT use disease names** — use ____ as a mask for any disease or procedure name that would reveal the diagnosis (e.g., write "surgical intervention" instead of a specific procedure name)
 
 The skill should be written as markdown with clear step-by-step instructions that the agent can follow during its diagnostic reasoning loop. Focus on:
-- When to do Physical Examination (should always be FIRST)
+- When to do Physical Examination and how to decide if it's needed
 - How to select labs based on exam findings (not shotgun ordering)
 - How to choose imaging modality based on suspected pathology location
 - When to recommend surgical vs conservative treatment

@@ -8,20 +8,14 @@ hallucination (Hager failure mode #5) and parsing errors (failure mode #8).
 from agents import function_tool, RunContextWrapper
 
 from context import PatientContext
-from guardrails import pe_first_guardrail
 from hager_imports import get_actions, get_nlp
-
-
-def _pe_is_done(ctx: RunContextWrapper[PatientContext], agent) -> bool:
-    """Labs/imaging only visible after PE has been performed."""
-    return ctx.context.pe_done
 
 
 @function_tool
 async def physical_examination(
     context: RunContextWrapper[PatientContext],
 ) -> str:
-    """Perform a physical examination on the patient. Returns all physical exam findings. No input needed — call this tool first before ordering any tests."""
+    """Perform a physical examination on the patient. Returns all physical exam findings. No input needed."""
     ctx = context.context
     ctx.pe_done = True
     actions = get_actions()
@@ -29,7 +23,7 @@ async def physical_examination(
     return f"Physical Examination:\n{result}"
 
 
-@function_tool(is_enabled=_pe_is_done, tool_input_guardrails=[pe_first_guardrail])
+@function_tool
 async def laboratory_tests(
     context: RunContextWrapper[PatientContext],
     test_names: list[str],
@@ -57,7 +51,7 @@ async def laboratory_tests(
     return f"Laboratory Tests:\n{result}"
 
 
-@function_tool(is_enabled=_pe_is_done, tool_input_guardrails=[pe_first_guardrail])
+@function_tool
 async def imaging(
     context: RunContextWrapper[PatientContext],
     modality: str,

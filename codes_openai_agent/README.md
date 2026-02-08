@@ -27,7 +27,7 @@ A multi-agent clinical diagnostic system built on the [OpenAI Agents SDK](https:
 | Tool hallucination (every 2-5 pts) | Fuzzy match + penalty | Eliminated: `@function_tool` validates JSON schema |
 | Phrasing sensitivity (18% swing) | Format instructions | Eliminated: `output_type=DiagnosticResult` enforces schema |
 | Lab interpretation (26-77%) | Approach 3 annotations | Lab Interpreter sub-agent + annotations |
-| Skip PE (47% skip or late) | Prompt rules | `is_enabled` + `tool_input_guardrail` blocks labs/imaging before PE |
+| Skip PE (47% skip or late) | Prompt rules | Model decides tool ordering freely (no guardrail); evaluator measures PE-first rate |
 | Treatment gaps | Free-text parsing | `treatment` + `severity` required fields |
 
 ## Prerequisites
@@ -277,7 +277,7 @@ codes_openai_agent/
     context.py             # PatientContext: mutable state shared across tools and agents
     models.py              # Pydantic output models (DiagnosticResult, LabInterpretation, ChallengerFeedback)
     tools.py               # @function_tool wrappers around Hager's retrieve_* functions
-    guardrails.py          # PE-first tool input guardrail + diagnosis output guardrail
+    guardrails.py          # Diagnosis output guardrail (validates DiagnosticResult content)
     hooks.py               # ClinicalRunHooks: tool call logging, timing, observability
     evaluator_adapter.py   # Converts SDK RunResult -> PathologyEvaluator (AgentAction, observation) format
     hager_imports.py       # Handles `agents` package naming collision between SDK and Hager's code
@@ -301,9 +301,9 @@ run.py
          -> create_orchestrator(model)    # Agent + tools + sub-agents + guardrails
          -> ClinicalRunHooks()            # Tool call logging + timing
          -> Runner.run(orchestrator, hooks=hooks, error_handlers=...)
-             -> PE (is_enabled unlocks labs/imaging)
-             -> Labs (guardrail enforces PE-first) -> interpret_lab_results
-             -> Imaging (guardrail enforces PE-first) -> challenge_diagnosis
+             -> PE / Labs / Imaging (any order, model decides)
+             -> interpret_lab_results (after labs)
+             -> challenge_diagnosis (before finalizing)
              -> DiagnosticResult (output_guardrail validates content)
          -> log token usage               # input/output/total tokens per patient
      -> convert_sdk_result()              # SDK RunResult -> [(AgentAction, obs)] trajectory
@@ -324,9 +324,7 @@ The SDK produces `RunResult.new_items` (tool calls + outputs). `evaluator_adapte
 
 | Feature | Where | What it does |
 |---|---|---|
-| `tool_input_guardrail` | `guardrails.py` → `tools.py` | Blocks lab/imaging calls if PE hasn't been done (failure mode #3) |
 | `output_guardrail` | `guardrails.py` → `orchestrator.py` | Validates DiagnosticResult has meaningful diagnosis, treatment, evidence |
-| `is_enabled` | `tools.py` | Hides lab/imaging tools from model until PE is done (belt-and-suspenders with guardrail) |
 | `ModelSettings` | `orchestrator.py` | `temperature=0.0, parallel_tool_calls=False` for deterministic, sequential tool use |
 | `RunHooks` | `hooks.py` → `manager.py` | Logs tool calls with timing; tracks tool ordering in `PatientContext.tool_call_log` |
 | `RunErrorHandlers` | `manager.py` | Graceful degradation: returns best-effort `DiagnosticResult` on max turns exceeded |

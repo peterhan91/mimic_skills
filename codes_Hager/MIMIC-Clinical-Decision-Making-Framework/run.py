@@ -115,15 +115,17 @@ def run(args: DictConfig):
     # os.environ["LANGCHAIN_PROJECT"] = run_name
 
     # Predict for all patients
+    patient_ids = list(hadm_info_clean.keys())
+    total_patients = len(patient_ids)
     first_patient_seen = False
-    for _id in hadm_info_clean.keys():
+    for patient_num, _id in enumerate(patient_ids, 1):
         if args.first_patient and not first_patient_seen:
             if _id == args.first_patient:
                 first_patient_seen = True
             else:
                 continue
 
-        logger.info(f"Processing patient: {_id}")
+        logger.info(f"[{patient_num}/{total_patients}] Processing patient: {_id}")
 
         # Build
         agent_executor = build_agent_executor_ZeroShot(
