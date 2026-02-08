@@ -98,7 +98,7 @@ echo ""
 # ============================================================
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-1,2}" \
 apptainer exec --nv --fakeroot \
-    --overlay "$OVERLAY" \
+    --overlay "$OVERLAY":ro \
     --bind "$HF_CACHE":/root/.cache/huggingface \
     --bind "$PROJECT":/workspace \
     "$SIF" \
