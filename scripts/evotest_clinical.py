@@ -738,6 +738,9 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
         logger.info(f"  Episode log:      {EPISODE_LOG}")
         logger.info(f"{'='*70}")
 
+        consecutive_failures = 0
+        max_consecutive_failures = 2
+
         for episode_num in range(start_episode, total_episodes):
             ep_start = time.time()
             episodes_done = episode_num - start_episode
@@ -818,7 +821,12 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                 logger.info(f"  Running episode with evolved skill...")
                 result = self.run_episode(new_skill, episode_num)
                 if result is None:
-                    logger.error(f"  Episode {episode_num} failed — creating failed node and continuing")
+                    consecutive_failures += 1
+                    logger.error(f"  Episode {episode_num} failed ({consecutive_failures} consecutive) — creating failed node")
+                    if consecutive_failures >= max_consecutive_failures:
+                        logger.error(f"  {max_consecutive_failures} consecutive failures — aborting (likely infrastructure issue)")
+                        self.save_state()
+                        return
                     node = {
                         "idx": len(self.nodes),
                         "skill_text": new_skill,
@@ -861,6 +869,7 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                 parent_node["children_idxs"].append(node["idx"])
 
                 # Update best
+                consecutive_failures = 0
                 self.last_episode_score = composite
                 if composite > self.best_score:
                     self.best_score = composite
