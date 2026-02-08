@@ -38,6 +38,8 @@ VLLM_TIMEOUT=300  # seconds to wait for vLLM startup
 # ============================================================
 # Build experiment command based on mode
 # ============================================================
+VLLM_EXTRA_ARGS=""  # Extra vLLM server flags (e.g. tool-choice for SDK)
+
 case "$EXPERIMENT" in
     multi)
         VERSION="${1:-v1}"
@@ -63,6 +65,7 @@ case "$EXPERIMENT" in
         EPISODES="${1:-10}"
         shift || true
         EXP_CMD="python /workspace/codes_openai_agent/evotest_loop.py --episodes $EPISODES --litellm-model openai/$VLLM_MODEL --litellm-base-url http://localhost:$VLLM_PORT/v1 --evolver-model claude-opus-4-6 $*"
+        VLLM_EXTRA_ARGS="--enable-auto-tool-choice --tool-call-parser hermes"
         DESC="EvoTest SDK ($EPISODES episodes)"
         ;;
     shell)
@@ -123,8 +126,8 @@ python -m vllm.entrypoints.openai.api_server \\
     --tensor-parallel-size $VLLM_TP \\
     --gpu-memory-utilization $VLLM_GPU_UTIL \\
     --max-model-len $VLLM_MAX_LEN \\
-    --enable-auto-tool-choice \\
     --port $VLLM_PORT \\
+    $VLLM_EXTRA_ARGS \\
     > /tmp/vllm.log 2>&1 &
 VLLM_PID=\$!
 
