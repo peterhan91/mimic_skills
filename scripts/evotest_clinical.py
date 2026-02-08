@@ -739,7 +739,7 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
         logger.info(f"{'='*70}")
 
         consecutive_failures = 0
-        max_consecutive_failures = 2
+        max_consecutive_failures = 1
 
         for episode_num in range(start_episode, total_episodes):
             ep_start = time.time()
@@ -781,7 +781,7 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                     result = self.run_episode(skill_text if skill_text else None, episode_num)
                 if result is None:
                     logger.error("  Episode 0 failed — aborting")
-                    return
+                    sys.exit(1)
 
                 composite, per_metric, per_pathology, traj_paths = result
                 node = {
@@ -826,7 +826,7 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                     if consecutive_failures >= max_consecutive_failures:
                         logger.error(f"  {max_consecutive_failures} consecutive failures — aborting (likely infrastructure issue)")
                         self.save_state()
-                        return
+                        sys.exit(1)
                     node = {
                         "idx": len(self.nodes),
                         "skill_text": new_skill,
