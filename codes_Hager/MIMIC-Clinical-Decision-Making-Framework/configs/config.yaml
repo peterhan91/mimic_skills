@@ -38,3 +38,10 @@ vllm_base_url:
 
 skill_path:
 skill_inject: examples
+
+# Tree of Thoughts (ToT) parameters
+tot_n_generate: 3
+tot_breadth: 2
+tot_max_depth: 10
+tot_temperature: 0.7
+tot_eval_temperature: 0.0

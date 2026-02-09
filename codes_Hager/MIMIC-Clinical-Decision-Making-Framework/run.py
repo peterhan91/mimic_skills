@@ -23,6 +23,7 @@ from evaluators.bowel_obstruction_evaluator import BowelObstructionEvaluator
 from evaluators.pyelonephritis_evaluator import PyelonephritisEvaluator
 from models.models import CustomLLM
 from agents.agent import build_agent_executor_ZeroShot
+from agents.tot_agent import build_tot_runner
 
 
 def load_evaluator(pathology):
@@ -137,28 +138,53 @@ def run(args: DictConfig):
         logger.info(f"[{patient_num}/{total_patients}] Processing patient: {_id}")
 
         # Build
-        agent_executor = build_agent_executor_ZeroShot(
-            patient=hadm_info_clean[_id],
-            llm=llm,
-            lab_test_mapping_path=args.lab_test_mapping_path,
-            logfile=log_path,
-            max_context_length=args.max_context_length,
-            tags=tags,
-            include_ref_range=args.include_ref_range,
-            bin_lab_results=args.bin_lab_results,
-            include_tool_use_examples=args.include_tool_use_examples,
-            provide_diagnostic_criteria=args.provide_diagnostic_criteria,
-            summarize=args.summarize,
-            model_stop_words=args.stop_words,
-            skill_path=args.get("skill_path", None),
-            skill_inject=args.get("skill_inject", "examples"),
-            annotate_clinical=args.get("annotate_clinical", False),
-        )
-
-        # Run
-        result = agent_executor(
-            {"input": hadm_info_clean[_id]["Patient History"].strip()}
-        )
+        if args.agent == "ToT":
+            runner = build_tot_runner(
+                patient=hadm_info_clean[_id],
+                llm=llm,
+                lab_test_mapping_path=args.lab_test_mapping_path,
+                logfile=log_path,
+                max_context_length=args.max_context_length,
+                tags=tags,
+                include_ref_range=args.include_ref_range,
+                bin_lab_results=args.bin_lab_results,
+                include_tool_use_examples=args.include_tool_use_examples,
+                provide_diagnostic_criteria=args.provide_diagnostic_criteria,
+                summarize=args.summarize,
+                model_stop_words=args.stop_words,
+                skill_path=args.get("skill_path", None),
+                skill_inject=args.get("skill_inject", "examples"),
+                annotate_clinical=args.get("annotate_clinical", False),
+                tot_n_generate=args.get("tot_n_generate", 3),
+                tot_breadth=args.get("tot_breadth", 2),
+                tot_max_depth=args.get("tot_max_depth", 10),
+                tot_temperature=args.get("tot_temperature", 0.7),
+                tot_eval_temperature=args.get("tot_eval_temperature", 0.0),
+            )
+            result = runner(
+                {"input": hadm_info_clean[_id]["Patient History"].strip()}
+            )
+        else:
+            agent_executor = build_agent_executor_ZeroShot(
+                patient=hadm_info_clean[_id],
+                llm=llm,
+                lab_test_mapping_path=args.lab_test_mapping_path,
+                logfile=log_path,
+                max_context_length=args.max_context_length,
+                tags=tags,
+                include_ref_range=args.include_ref_range,
+                bin_lab_results=args.bin_lab_results,
+                include_tool_use_examples=args.include_tool_use_examples,
+                provide_diagnostic_criteria=args.provide_diagnostic_criteria,
+                summarize=args.summarize,
+                model_stop_words=args.stop_words,
+                skill_path=args.get("skill_path", None),
+                skill_inject=args.get("skill_inject", "examples"),
+                annotate_clinical=args.get("annotate_clinical", False),
+            )
+            result = agent_executor(
+                {"input": hadm_info_clean[_id]["Patient History"].strip()}
+            )
         append_to_pickle_file(results_log_path, {_id: result})
 
 

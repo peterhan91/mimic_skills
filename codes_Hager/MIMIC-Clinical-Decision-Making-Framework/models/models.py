@@ -447,6 +447,129 @@ class CustomLLM(LLM):
 
         return output.strip()
 
+    def generate_with_temperature(
+        self,
+        prompt: str,
+        stop: List[str],
+        temperature: float = 0.7,
+    ) -> str:
+        """Generate text with explicit temperature control for ToT sampling.
+
+        Unlike _call() which uses hardcoded temperature=0.0 for most backends,
+        this method respects the passed temperature across all backends.
+        """
+        self.probabilities = None
+
+        if self.model_name == "Human":
+            return input(prompt)
+
+        elif self.vllm_base_url:
+            import requests
+            resp = requests.post(
+                f"{self.vllm_base_url}/completions",
+                json={
+                    "model": self.model_name,
+                    "prompt": prompt,
+                    "max_tokens": 1024,
+                    "temperature": temperature,
+                    "stop": STOP_WORDS + stop,
+                    "seed": None if temperature > 0 else self.seed,
+                },
+                timeout=120,
+            )
+            resp.raise_for_status()
+            output = resp.json()["choices"][0]["text"]
+
+        elif self.openai_api_key:
+            messages = extract_sections(prompt, self.tags)
+            response = self.completion_with_backoff(
+                model=self.model_name,
+                messages=messages,
+                stop=STOP_WORDS,
+                temperature=temperature,
+                seed=None if temperature > 0 else self.seed,
+            )
+            output = response["choices"][0]["message"]["content"]
+
+        elif self.exllama:
+            with torch.inference_mode():
+                ids = self.tokenizer.encode(prompt, encode_special_tokens=True)
+                tokens_prompt = ids.shape[-1]
+
+                settings = ExLlamaV2Sampler.Settings()
+                if temperature > 0:
+                    settings = settings.clone()
+                    settings.temperature = temperature
+                    seed = None
+                else:
+                    settings = settings.greedy_clone()
+                    seed = self.seed
+
+                stop_criteria = create_stop_criteria_exllama(
+                    stop, self.tokenizer.eos_token_id, self.tokenizer
+                )
+
+                output_tokens, self.probabilities = self.generator.generate_simple(
+                    prompt,
+                    gen_settings=settings,
+                    num_tokens=self.max_context_length - tokens_prompt,
+                    seed=seed,
+                    token_healing=True,
+                    encode_special_tokens=True,
+                    decode_special_tokens=False,
+                    stop_criteria=stop_criteria,
+                )
+
+                output_tokens = self.remove_input_tokens(output_tokens, ids)
+                output = self.tokenizer.decode(
+                    output_tokens, decode_special_tokens=False
+                )[0]
+
+        else:
+            inputs = self.tokenizer(
+                prompt,
+                return_tensors="pt",
+                max_length=self.max_context_length,
+                truncation=True,
+                padding=False,
+            )
+            input_ids = inputs["input_ids"].to(self.model.device)
+
+            do_sample = temperature > 0
+            generation_config = GenerationConfig(
+                temperature=temperature if do_sample else 1.0,
+                top_p=0.95 if do_sample else 1.0,
+                top_k=50 if do_sample else 1,
+                do_sample=do_sample,
+                repetition_penalty=1.2,
+                pad_token_id=self.tokenizer.pad_token_id,
+            )
+
+            stop_criteria_obj = create_stop_criteria(
+                stop, self.tokenizer, self.model.device
+            )
+
+            with torch.no_grad():
+                generation_output = self.model.generate(
+                    input_ids=input_ids,
+                    generation_config=generation_config,
+                    stopping_criteria=StoppingCriteriaList([stop_criteria_obj]),
+                    return_dict_in_generate=True,
+                    output_scores=True,
+                    max_length=self.max_context_length,
+                )
+
+            s = generation_output.sequences
+            s_no_input = s[:, input_ids.shape[1]:]
+            output = self.tokenizer.batch_decode(
+                s_no_input, skip_special_tokens=True
+            )[0]
+
+        for stop_word in STOP_WORDS + stop:
+            output = output.replace(stop_word, "")
+
+        return output.strip()
+
     @property
     def _identifying_params(self) -> Mapping[str, Any]:
         """Get the identifying parameters."""
