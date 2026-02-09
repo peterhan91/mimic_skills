@@ -22,7 +22,7 @@ set -euo pipefail
 # Configuration — edit these
 # ---------------------------------------------------------------------------
 EPISODES=10
-AGENT_MODEL="openai/Qwen3-30B-A3B"
+AGENT_MODEL="openai/Qwen/Qwen3-30B-A3B-Instruct-2507"
 EVOLVER_MODEL="claude-opus-4-6"
 VLLM_BASE_URL="http://localhost:8000/v1"
 SPLIT="train"                      # train (10 pts) | test (100 pts) | full
