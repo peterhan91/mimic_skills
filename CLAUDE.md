@@ -767,8 +767,11 @@ mimic_skills/
 │   ├── compare_runs.py               # Side-by-side comparison of two runs
 │   ├── evaluate_run.py               # Run PathologyEvaluator on results
 │   ├── parse_guidelines.py           # Extract clinical guidelines to markdown
-│   ├── run_experiment.sh             # Run single pathology experiments
-│   └── run_experiment_multi.sh       # Loop over all 4 pathologies
+│   ├── evotest_train.sh              # EvoTest evolutionary optimization loop
+│   ├── evotest_test.sh              # Test best skill on 100-patient test set
+│   ├── evotest_full.sh              # Full pipeline: train → test best skill
+│   ├── container.sh                 # Apptainer container launcher (GPU server)
+│   └── start_vllm.sh               # Start vLLM server
 ├── data_splits/                       # Created by split_data.py
 │   ├── appendicitis/
 │   │   ├── train.pkl (10)

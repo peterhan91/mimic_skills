@@ -2,13 +2,13 @@
 set -euo pipefail
 
 # ============================================================
-# run_full_experiment.sh — Train on 4×10, test best skill on 7×100
+# evotest_full.sh — Train on 4×10, test best skill on 7×100
 #
 # Usage:
-#   bash scripts/run_full_experiment.sh [EPISODES] [MODEL] [EVOLVER_MODEL] [ANNOTATE_CLINICAL]
+#   bash scripts/evotest_full.sh [EPISODES] [MODEL] [EVOLVER_MODEL] [ANNOTATE_CLINICAL]
 #
 # Resume after interruption (skips to test if training is done):
-#   bash scripts/run_full_experiment.sh --resume [EPISODES] [MODEL] ...
+#   bash scripts/evotest_full.sh --resume [EPISODES] [MODEL] ...
 # ============================================================
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -41,7 +41,7 @@ echo ""
 echo "########### STEP 1: EvoTest Training (4×10) ###########"
 echo ""
 
-bash "$PROJECT_DIR/scripts/run_iterations.sh" \
+bash "$PROJECT_DIR/scripts/evotest_train.sh" \
     "${RESUME_FLAG[@]+"${RESUME_FLAG[@]}"}" \
     "$EPISODES" "$MODEL" "$EVOLVER_MODEL" "$ANNOTATE_CLINICAL"
 
@@ -78,7 +78,7 @@ echo ""
 echo "########### STEP 3: Test Evaluation (7×100) ###########"
 echo ""
 
-bash "$PROJECT_DIR/scripts/run_test_eval.sh" \
+bash "$PROJECT_DIR/scripts/evotest_test.sh" \
     "$BEST_SKILL" "$MODEL" "$ANNOTATE_CLINICAL"
 
 echo ""

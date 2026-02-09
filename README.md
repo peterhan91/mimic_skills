@@ -30,8 +30,8 @@ python codes_Hager/MIMIC-Clinical-Decision-Making-Framework/run.py \
   pathology=appendicitis model=Qwen3_30B_A3B \
   skill_path=skills/v3/acute_abdominal_pain.md skill_inject=both
 
-# Multi-pathology experiment loop
-bash scripts/run_experiment_multi.sh
+# Full experiment: EvoTest training + test evaluation
+bash scripts/evotest_full.sh
 ```
 
 ## Pathologies

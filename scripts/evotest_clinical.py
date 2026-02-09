@@ -1,7 +1,7 @@
 """
 EvoTest-style evolutionary skill optimization for Hager's clinical agent.
 
-Replaces the linear run_iterations.sh pipeline with UCB tree-based exploration
+UCB tree-based exploration
 + regression protection. Each episode runs the agent on all 4 pathologies x
 train patients, collects trajectories, computes a composite score, and the
 Evolver (Opus) generates an improved skill for the next episode.

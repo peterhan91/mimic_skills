@@ -293,7 +293,7 @@ Each episode takes ~20-40 min on GPU (40 patients), so 10 episodes = ~3-7 hours.
 
 ### Warm-Starting from an Existing Skill
 
-If you already have a skill from `run_experiment_multi.sh` (e.g., v2), use it as
+If you already have a skill from a previous run (e.g., v2), use it as
 the seed for episode 0 instead of running a cold baseline. Saves ~2 episodes of
 convergence:
 
@@ -408,9 +408,9 @@ for PATHOLOGY in appendicitis cholecystitis diverticulitis pancreatitis; do
 done
 ```
 
-### How EvoTest Differs from Linear `run_iterations.sh`
+### How EvoTest Differs from Linear Evolution
 
-| Aspect | `run_iterations.sh` (v1→v2→v3) | `evotest_clinical.py` |
+| Aspect | Linear (v1→v2→v3) | `evotest_clinical.py` |
 |---|---|---|
 | Exploration | Linear chain only | UCB tree — can branch and backtrack |
 | Regression protection | None — v3 builds on v2 even if v2 was bad | Force-best-after-drop reverts to best node |
@@ -484,9 +484,9 @@ git pull
 | `scripts/sanitize_skill.py` | Done | Remove disease name leakage from skills |
 | `scripts/compare_runs.py` | Done | Side-by-side comparison of two runs |
 | `scripts/parse_guidelines.py` | Done | Extract disease-specific guidelines from `open_guidelines.jsonl` |
-| `scripts/run_experiment.sh` | Done | Single-pathology evolution cycle (bash) |
-| `scripts/run_experiment_multi.sh` | Done | Multi-pathology evolution cycle (bash) |
-| `scripts/run_iterations.sh` | Done | Multi-version linear orchestrator (bash) |
+| `scripts/evotest_train.sh` | Done | EvoTest evolutionary optimization loop (bash) |
+| `scripts/evotest_test.sh` | Done | Test best skill on 100-patient test set (bash) |
+| `scripts/evotest_full.sh` | Done | Full pipeline: train → test best skill (bash) |
 | `scripts/evotest_clinical.py` | Done | **Automated EvoTest loop** with UCB tree (see section above) |
 
 ---
@@ -535,10 +535,12 @@ mimic_skills/
     sanitize_skill.py                # Remove disease name leakage
     compare_runs.py                  # Side-by-side comparison
     parse_guidelines.py              # Extract disease-specific guidelines from JSONL
-    run_experiment.sh                # Single-pathology bash pipeline
-    run_experiment_multi.sh          # Multi-pathology bash pipeline
-    run_iterations.sh                # Multi-version linear orchestrator
+    evotest_train.sh                 # EvoTest evolutionary optimization loop
+    evotest_test.sh                  # Test best skill on 100-patient test set
+    evotest_full.sh                  # Full pipeline: train → test best skill
     evotest_clinical.py              # Automated EvoTest loop with UCB tree
+    container.sh                     # Apptainer container launcher (GPU server)
+    start_vllm.sh                    # Start vLLM server
   guidelines/
     all_pathologies_context.md       # Combined guidelines (~15KB)
     appendicitis/
@@ -558,7 +560,7 @@ mimic_skills/
     diverticulitis/ ...
     pancreatitis/ ...
   skills/
-    v1/acute_abdominal_pain.md       # Linear evolution (run_experiment_multi.sh)
+    v1/acute_abdominal_pain.md       # Linear evolution (legacy)
     v2/acute_abdominal_pain.md
     evo/                             # EvoTest evolution (evotest_clinical.py)
       episode_0.md                   # Sanitized skills per episode

@@ -2,28 +2,28 @@
 set -euo pipefail
 
 # ============================================================
-# run_iterations.sh — Automated EvoTest evolutionary optimization
+# evotest_train.sh — Automated EvoTest evolutionary optimization
 #
 # Uses evotest_clinical.py (UCB tree exploration + regression
 # protection) instead of a linear v1→v2→v3 chain.
 #
-# Features over the old linear loop:
+# Features:
 #   - UCB tree: selects best parent node, can branch and backtrack
 #   - Regression protection: force-best-after-drop
 #   - Negative memory: shows failed skills to the Evolver
 #   - Resumable: --resume continues from evotest_state/state.json
 #
 # Usage:
-#   bash scripts/run_iterations.sh [EPISODES] [MODEL] [EVOLVER_MODEL] [ANNOTATE_CLINICAL] [INITIAL_SKILL]
+#   bash scripts/evotest_train.sh [EPISODES] [MODEL] [EVOLVER_MODEL] [ANNOTATE_CLINICAL] [INITIAL_SKILL]
 #
 # Examples:
-#   bash scripts/run_iterations.sh                                    # 10 episodes, defaults
-#   bash scripts/run_iterations.sh 15 Qwen3_30B_A3B                  # 15 episodes
-#   bash scripts/run_iterations.sh 10 Qwen3_30B_A3B claude-opus-4-6 True
-#   bash scripts/run_iterations.sh 10 Qwen3_30B_A3B claude-opus-4-6 True skills/v2/acute_abdominal_pain.md
+#   bash scripts/evotest_train.sh                                    # 10 episodes, defaults
+#   bash scripts/evotest_train.sh 15 Qwen3_30B_A3B                  # 15 episodes
+#   bash scripts/evotest_train.sh 10 Qwen3_30B_A3B claude-opus-4-6 True
+#   bash scripts/evotest_train.sh 10 Qwen3_30B_A3B claude-opus-4-6 True skills/v2/acute_abdominal_pain.md
 #
 # Resume after interruption:
-#   bash scripts/run_iterations.sh --resume [EPISODES]
+#   bash scripts/evotest_train.sh --resume [EPISODES]
 # ============================================================
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -47,7 +47,7 @@ EVOLVER_MODEL="${3:-claude-opus-4-6}"
 ANNOTATE_CLINICAL="${4:-True}"
 INITIAL_SKILL="${5:-}"
 
-# Train on 4 original pathologies; test on all 7 (via run_test_eval.sh)
+# Train on 4 original pathologies; test on all 7 (via evotest_test.sh)
 TRAIN_PATHOLOGIES=(appendicitis cholecystitis diverticulitis pancreatitis)
 
 LOG_FILE="$LOG_DIR/evotest_${TIMESTAMP}.log"
@@ -230,7 +230,7 @@ fi
 # ============================================================
 echo "  Next steps:"
 echo "    - Review best skill: cat $SKILLS_DIR/episode_<N>.md"
-echo "    - Continue evolving: bash scripts/run_iterations.sh --resume $((EPISODES + 5))"
+echo "    - Continue evolving: bash scripts/evotest_train.sh --resume $((EPISODES + 5))"
 echo "    - Run final eval on test set (100 patients per pathology):"
 echo "      BEST_SKILL=$SKILLS_DIR/episode_<N>.md"
 echo "      for P in appendicitis cholecystitis diverticulitis pancreatitis; do"

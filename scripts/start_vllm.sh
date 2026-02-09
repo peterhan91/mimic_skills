@@ -5,7 +5,7 @@ set -euo pipefail
 # start_vllm.sh — Start vLLM server inside Apptainer (keep running)
 #
 # Run this once, leave it running. Then run experiments separately:
-#   bash scripts/run_in_container.sh evotest 10
+#   bash scripts/container.sh evotest 10
 #
 # Usage:
 #   bash scripts/start_vllm.sh              # default config
@@ -51,7 +51,7 @@ echo "  Extra:  ${VLLM_EXTRA_ARGS:-none}"
 echo ""
 echo "  Stop with Ctrl+C"
 echo "  Run experiments in another terminal:"
-echo "    bash scripts/run_in_container.sh evotest 10"
+echo "    bash scripts/container.sh evotest 10"
 echo "============================================================"
 echo ""
 

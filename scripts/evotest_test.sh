@@ -2,18 +2,18 @@
 set -euo pipefail
 
 # ============================================================
-# run_test_eval.sh — Evaluate best skill on test set (100 patients)
+# evotest_test.sh — Evaluate best skill on test set (100 patients)
 #
 # Swaps data_splits/{path}/{path}_hadm_info_first_diag.pkl to
 # point at test.pkl (100 patients) instead of train.pkl (10),
 # runs baseline + best skill, evaluates, and compares.
 #
 # Usage:
-#   bash scripts/run_test_eval.sh <BEST_SKILL_PATH> [MODEL] [ANNOTATE_CLINICAL]
+#   bash scripts/evotest_test.sh <BEST_SKILL_PATH> [MODEL] [ANNOTATE_CLINICAL]
 #
 # Examples:
-#   bash scripts/run_test_eval.sh skills/evo/episode_5.md
-#   bash scripts/run_test_eval.sh skills/evo/episode_5.md vLLM_Qwen3 True
+#   bash scripts/evotest_test.sh skills/evo/episode_5.md
+#   bash scripts/evotest_test.sh skills/evo/episode_5.md vLLM_Qwen3 True
 #
 # The script will:
 #   1. Back up current _hadm_info_first_diag.pkl (train) files
