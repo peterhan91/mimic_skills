@@ -77,7 +77,7 @@ from evolve_skill import (
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-PATHOLOGIES = [
+ALL_PATHOLOGIES = [
     "appendicitis", "cholecystitis", "diverticulitis", "pancreatitis",
     "cholangitis", "bowel_obstruction", "pyelonephritis",
 ]
@@ -216,6 +216,7 @@ def run_subprocess(cmd, description, cwd=None, dry_run=False):
 class ClinicalEvoTest:
     def __init__(self, args):
         self.args = args
+        self.pathologies = getattr(args, "pathologies", None) or ALL_PATHOLOGIES
         self.nodes = []
         self.best_node_idx = None
         self.best_score = float("-inf")
@@ -238,7 +239,7 @@ class ClinicalEvoTest:
         self._guidelines_source = None
         if not getattr(args, "no_guidelines", False):
             gdir = getattr(args, "guidelines_dir", None) or DEFAULT_GUIDELINES_DIR
-            self.guidelines_context = load_guidelines_context(gdir, pathologies=PATHOLOGIES)
+            self.guidelines_context = load_guidelines_context(gdir, pathologies=self.pathologies)
             if self.guidelines_context:
                 self._guidelines_source = gdir
 
@@ -356,7 +357,7 @@ class ClinicalEvoTest:
         all_trajectory_data = []
         trajectory_paths = []
 
-        for pathology in PATHOLOGIES:
+        for pathology in self.pathologies:
             traj_file = traj_dir / f"evo_ep0_{pathology}.json"
             if not traj_file.exists():
                 logger.warning(f"  Baseline trajectory not found: {traj_file}")
@@ -396,7 +397,7 @@ class ClinicalEvoTest:
         trajectory_paths = []
         all_trajectory_data = []
 
-        for pathology in PATHOLOGIES:
+        for pathology in self.pathologies:
             patient_data = self.data_dir / pathology / f"{DEFAULT_SPLIT}.pkl"
             if not patient_data.exists():
                 logger.warning(f"  {patient_data} not found, skipping {pathology}")
@@ -578,8 +579,8 @@ class ClinicalEvoTest:
                 failures = identify_failures(data)
                 all_failures.extend(failures)
 
-            # Pick up to 2 per pathology, max 14 total
-            for pathology in PATHOLOGIES:
+            # Pick up to 2 per pathology
+            for pathology in self.pathologies:
                 path_failures = [f for f in all_failures if f["pathology"] == pathology]
                 for fail in path_failures[:2]:
                     admission = fail["admission"]
@@ -732,7 +733,7 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
             return
 
         logger.info(f"{'='*70}")
-        logger.info(f"EvoTest Clinical | {total_episodes} episodes | {len(PATHOLOGIES)} pathologies")
+        logger.info(f"EvoTest Clinical | {total_episodes} episodes | {len(self.pathologies)} pathologies")
         logger.info(f"{'='*70}")
         logger.info(f"  Model:            {self.args.model}")
         logger.info(f"  Evolver:          {self.args.evolver_model}")
@@ -1024,6 +1025,10 @@ def main():
     parser.add_argument(
         "--resume", action="store_true",
         help="Resume from saved state"
+    )
+    parser.add_argument(
+        "--pathologies", type=str, nargs="+", default=ALL_PATHOLOGIES,
+        help="Pathologies to train on (default: all 7)"
     )
     parser.add_argument(
         "--dry-run", action="store_true",

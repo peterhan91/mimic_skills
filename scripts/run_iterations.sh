@@ -47,6 +47,9 @@ EVOLVER_MODEL="${3:-claude-opus-4-6}"
 ANNOTATE_CLINICAL="${4:-True}"
 INITIAL_SKILL="${5:-}"
 
+# Train on 4 original pathologies; test on all 7 (via run_test_eval.sh)
+TRAIN_PATHOLOGIES=(appendicitis cholecystitis diverticulitis pancreatitis)
+
 LOG_FILE="$LOG_DIR/evotest_${TIMESTAMP}.log"
 mkdir -p "$LOG_DIR"
 
@@ -85,7 +88,7 @@ fi
 LAB_TEST_MAPPING="$PROJECT_DIR/MIMIC-CDM-IV/lab_test_mapping.pkl"
 [ -f "$LAB_TEST_MAPPING" ] || { echo "ERROR: Lab test mapping not found: $LAB_TEST_MAPPING"; exit 1; }
 
-for PATHOLOGY in appendicitis cholecystitis diverticulitis pancreatitis; do
+for PATHOLOGY in "${TRAIN_PATHOLOGIES[@]}"; do
     DATA="$PROJECT_DIR/data_splits/$PATHOLOGY/train.pkl"
     HAGER="$PROJECT_DIR/data_splits/$PATHOLOGY/${PATHOLOGY}_hadm_info_first_diag.pkl"
     [ -f "$DATA" ] || { echo "ERROR: Patient data not found: $DATA"; exit 1; }
@@ -104,6 +107,7 @@ EVOTEST_CMD=(
     --model "$MODEL"
     --evolver-model "$EVOLVER_MODEL"
     --annotate-clinical "$ANNOTATE_CLINICAL"
+    --pathologies "${TRAIN_PATHOLOGIES[@]}"
 )
 
 if [ "$RESUME" = true ]; then
@@ -129,7 +133,7 @@ fi
 TRAJ_DIR="$PROJECT_DIR/trajectories"
 if [ "$RESUME" = false ] && [ -z "$INITIAL_SKILL" ] && [ -d "$TRAJ_DIR" ]; then
     BASELINE_OK=true
-    for PATHOLOGY in appendicitis cholecystitis diverticulitis pancreatitis; do
+    for PATHOLOGY in "${TRAIN_PATHOLOGIES[@]}"; do
         if [ ! -f "$TRAJ_DIR/evo_ep0_${PATHOLOGY}.json" ]; then
             BASELINE_OK=false
             break
