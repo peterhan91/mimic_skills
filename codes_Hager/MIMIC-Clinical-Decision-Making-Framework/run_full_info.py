@@ -24,6 +24,9 @@ from evaluators.appendicitis_evaluator import AppendicitisEvaluator
 from evaluators.cholecystitis_evaluator import CholecystitisEvaluator
 from evaluators.diverticulitis_evaluator import DiverticulitisEvaluator
 from evaluators.pancreatitis_evaluator import PancreatitisEvaluator
+from evaluators.cholangitis_evaluator import CholangitisEvaluator
+from evaluators.bowel_obstruction_evaluator import BowelObstructionEvaluator
+from evaluators.pyelonephritis_evaluator import PyelonephritisEvaluator
 from models.models import CustomLLM
 from agents.prompts import (
     FULL_INFO_TEMPLATE,
@@ -77,6 +80,12 @@ def load_evaluator(pathology):
         evaluator = DiverticulitisEvaluator()
     elif pathology == "pancreatitis":
         evaluator = PancreatitisEvaluator()
+    elif pathology == "cholangitis":
+        evaluator = CholangitisEvaluator()
+    elif pathology == "bowel_obstruction":
+        evaluator = BowelObstructionEvaluator()
+    elif pathology == "pyelonephritis":
+        evaluator = PyelonephritisEvaluator()
     else:
         raise NotImplementedError
     return evaluator

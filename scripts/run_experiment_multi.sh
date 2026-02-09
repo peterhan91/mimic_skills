@@ -33,7 +33,7 @@ MODEL="${2:-Qwen3_30B_A3B}"
 EVOLVER_MODEL="${3:-claude-opus-4-6}"
 ANNOTATE_CLINICAL="${4:-True}"
 SPLIT="train"
-PATHOLOGIES=("appendicitis" "cholecystitis" "diverticulitis" "pancreatitis")
+PATHOLOGIES=("appendicitis" "cholecystitis" "diverticulitis" "pancreatitis" "cholangitis" "bowel_obstruction" "pyelonephritis")
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 FRAMEWORK_DIR="$PROJECT_DIR/codes_Hager/MIMIC-Clinical-Decision-Making-Framework"

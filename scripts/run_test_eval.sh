@@ -42,7 +42,7 @@ LOG_FILE="$LOG_DIR/test_eval_${TIMESTAMP}.log"
 
 BASE_MODELS="${HF_HOME:-${HOME}/.cache/huggingface/hub}"
 LAB_TEST_MAPPING="$PROJECT_DIR/MIMIC-CDM-IV/lab_test_mapping.pkl"
-PATHOLOGIES=("appendicitis" "cholecystitis" "diverticulitis" "pancreatitis")
+PATHOLOGIES=("appendicitis" "cholecystitis" "diverticulitis" "pancreatitis" "cholangitis" "bowel_obstruction" "pyelonephritis")
 
 # ============================================================
 # Helpers

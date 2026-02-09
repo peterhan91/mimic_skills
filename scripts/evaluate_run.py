@@ -30,6 +30,9 @@ from evaluators.appendicitis_evaluator import AppendicitisEvaluator
 from evaluators.cholecystitis_evaluator import CholecystitisEvaluator
 from evaluators.diverticulitis_evaluator import DiverticulitisEvaluator
 from evaluators.pancreatitis_evaluator import PancreatitisEvaluator
+from evaluators.cholangitis_evaluator import CholangitisEvaluator
+from evaluators.bowel_obstruction_evaluator import BowelObstructionEvaluator
+from evaluators.pyelonephritis_evaluator import PyelonephritisEvaluator
 
 
 EVALUATORS = {
@@ -37,6 +40,9 @@ EVALUATORS = {
     "cholecystitis": CholecystitisEvaluator,
     "diverticulitis": DiverticulitisEvaluator,
     "pancreatitis": PancreatitisEvaluator,
+    "cholangitis": CholangitisEvaluator,
+    "bowel_obstruction": BowelObstructionEvaluator,
+    "pyelonephritis": PyelonephritisEvaluator,
 }
 
 

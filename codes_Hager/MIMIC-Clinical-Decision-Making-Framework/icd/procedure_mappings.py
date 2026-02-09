@@ -496,3 +496,272 @@ ALTERNATE_DRAINAGE_KEYWORDS_PANCREATITIS = [
     {"location": loc, "modifiers": DRAINAGE_PROCEDURES_KEYWORDS}
     for loc in DRAINAGE_LOCATIONS_PANCREATITIS
 ]
+
+
+### BILIARY DRAINAGE (for cholangitis) ###
+
+BILIARY_DRAINAGE_PROCEDURES_ICD9 = [
+    5198,  # Other percutaneous procedures on biliary tract
+    5091,  # Percutaneous aspiration of liver
+    5101,  # Percutaneous aspiration of gallbladder
+    8751,  # Percutaneous hepatic cholangiogram
+]
+
+BILIARY_DRAINAGE_PROCEDURES_ICD9_TITLES = [
+    "Other percutaneous procedures on biliary tract",
+    "Percutaneous aspiration of liver",
+    "Percutaneous aspiration of gallbladder",
+    "Percutaneous hepatic cholangiogram",
+]
+
+BILIARY_DRAINAGE_PROCEDURES_ICD10 = [
+    "0F9930Z",  # Drainage of Common Bile Duct with Drainage Device, Percutaneous Approach
+    "0F9430Z",  # Drainage of Gallbladder with Drainage Device, Percutaneous Approach
+    "0F998ZZ",  # Drainage of Common Bile Duct, Via Natural or Artificial Opening Endoscopic
+    "0F998ZX",  # Drainage of Common Bile Duct, Via Natural or Artificial Opening Endoscopic, Diagnostic
+    "0F2BX0Z",  # Change Drainage Device in Hepatobiliary Duct, External Approach
+]
+
+BILIARY_DRAINAGE_PROCEDURES_ICD10_TITLES = [
+    "Drainage of Common Bile Duct with Drainage Device, Percutaneous Approach",
+    "Drainage of Gallbladder with Drainage Device, Percutaneous Approach",
+    "Drainage of Common Bile Duct, Via Natural or Artificial Opening Endoscopic",
+    "Drainage of Common Bile Duct, Via Natural or Artificial Opening Endoscopic, Diagnostic",
+    "Change Drainage Device in Hepatobiliary Duct, External Approach",
+]
+
+BILIARY_DRAINAGE_PROCEDURES_KEYWORDS = [
+    "percutaneous biliary drain",
+    "biliary drain",
+    "ptc",
+    "percutaneous transhepatic",
+]
+
+ALTERNATE_BILIARY_DRAINAGE_KEYWORDS = [
+    {"location": "bile duct", "modifiers": ["drain", "catheter", "pigtail"]},
+    {"location": "biliary", "modifiers": ["drain", "catheter", "pigtail"]},
+]
+
+
+### BOWEL RESECTION (for bowel obstruction) ###
+
+BOWEL_RESECTION_PROCEDURES_ICD9 = [
+    4562,  # Other partial resection of small intestine
+    4591,  # Small-to-small intestinal anastomosis
+    4502,  # Other incision of small intestine
+]
+
+BOWEL_RESECTION_PROCEDURES_ICD9_TITLES = [
+    "Other partial resection of small intestine",
+    "Small-to-small intestinal anastomosis",
+    "Other incision of small intestine",
+]
+
+BOWEL_RESECTION_PROCEDURES_ICD10 = [
+    "0DBB0ZZ",  # Excision of Ileum, Open Approach
+    "0DB80ZZ",  # Excision of Small Intestine, Open Approach
+    "0DBA0ZZ",  # Excision of Jejunum, Open Approach
+    "0DBL0ZZ",  # Excision of Transverse Colon, Open Approach
+    "0DBM0ZZ",  # Excision of Descending Colon, Open Approach
+]
+
+BOWEL_RESECTION_PROCEDURES_ICD10_TITLES = [
+    "Excision of Ileum, Open Approach",
+    "Excision of Small Intestine, Open Approach",
+    "Excision of Jejunum, Open Approach",
+    "Excision of Transverse Colon, Open Approach",
+    "Excision of Descending Colon, Open Approach",
+]
+
+BOWEL_RESECTION_PROCEDURES_KEYWORDS = [
+    "small bowel resection",
+    "bowel resection",
+    "intestinal resection",
+    "enterectomy",
+]
+
+ALTERNATE_BOWEL_RESECTION_KEYWORDS = [
+    {"location": "bowel", "modifiers": ["surgery", "surgical", "resection", "removal"]},
+    {"location": "intestin", "modifiers": ["surgery", "surgical", "resection", "removal"]},
+]
+
+
+### ADHESIOLYSIS (for bowel obstruction) ###
+
+ADHESIOLYSIS_PROCEDURES_ICD9 = [
+    5459,  # Other lysis of peritoneal adhesions
+    5451,  # Laparoscopic lysis of peritoneal adhesions
+]
+
+ADHESIOLYSIS_PROCEDURES_ICD9_TITLES = [
+    "Other lysis of peritoneal adhesions",
+    "Laparoscopic lysis of peritoneal adhesions",
+]
+
+ADHESIOLYSIS_PROCEDURES_ICD10 = [
+    "0DNB0ZZ",  # Release Ileum, Open Approach
+    "0DN80ZZ",  # Release Small Intestine, Open Approach
+    "0DNB4ZZ",  # Release Ileum, Percutaneous Endoscopic Approach
+    "0DN90ZZ",  # Release Duodenum, Open Approach
+]
+
+ADHESIOLYSIS_PROCEDURES_ICD10_TITLES = [
+    "Release Ileum, Open Approach",
+    "Release Small Intestine, Open Approach",
+    "Release Ileum, Percutaneous Endoscopic Approach",
+    "Release Duodenum, Open Approach",
+]
+
+ADHESIOLYSIS_PROCEDURES_KEYWORDS = [
+    "lysis of adhesions",
+    "adhesiolysis",
+]
+
+ALTERNATE_ADHESIOLYSIS_KEYWORDS = [
+    {"location": "adhesion", "modifiers": ["lysis", "release", "division"]},
+]
+
+
+### LAPAROTOMY (for bowel obstruction) ###
+
+LAPAROTOMY_PROCEDURES_ICD9 = [
+    5411,  # Exploratory laparotomy
+    5412,  # Reopening of recent laparotomy site
+    5421,  # Laparoscopy
+]
+
+LAPAROTOMY_PROCEDURES_ICD9_TITLES = [
+    "Exploratory laparotomy",
+    "Reopening of recent laparotomy site",
+    "Laparoscopy",
+]
+
+LAPAROTOMY_PROCEDURES_ICD10 = [
+    "0WJP0ZZ",  # Inspection of Gastrointestinal Tract, Open Approach
+]
+
+LAPAROTOMY_PROCEDURES_ICD10_TITLES = [
+    "Inspection of Gastrointestinal Tract, Open Approach",
+]
+
+LAPAROTOMY_PROCEDURES_KEYWORDS = [
+    "exploratory laparotomy",
+    "laparotomy",
+    "laparoscopy",
+]
+
+ALTERNATE_LAPAROTOMY_KEYWORDS = [
+    {"location": "abdom", "modifiers": ["exploratory", "exploration"]},
+]
+
+
+### STOMA CREATION (for bowel obstruction) ###
+
+STOMA_PROCEDURES_ICD9 = [
+    4610,  # Colostomy, not otherwise specified
+    4620,  # Ileostomy, not otherwise specified
+]
+
+STOMA_PROCEDURES_ICD9_TITLES = [
+    "Colostomy, not otherwise specified",
+    "Ileostomy, not otherwise specified",
+]
+
+STOMA_PROCEDURES_ICD10 = [
+    "0D1B0Z4",  # Bypass Ileum to Cutaneous, Open Approach (ileostomy)
+    "0D1N0Z4",  # Bypass Sigmoid Colon to Cutaneous, Open Approach (colostomy)
+    "0D1N4Z4",  # Bypass Sigmoid Colon to Cutaneous, Percutaneous Endoscopic Approach
+]
+
+STOMA_PROCEDURES_ICD10_TITLES = [
+    "Bypass Ileum to Cutaneous, Open Approach",
+    "Bypass Sigmoid Colon to Cutaneous, Open Approach",
+    "Bypass Sigmoid Colon to Cutaneous, Percutaneous Endoscopic Approach",
+]
+
+STOMA_PROCEDURES_KEYWORDS = [
+    "colostomy",
+    "ileostomy",
+    "stoma",
+]
+
+ALTERNATE_STOMA_KEYWORDS = [
+    {"location": "colon", "modifiers": ["diversion", "ostomy"]},
+    {"location": "ileum", "modifiers": ["diversion", "ostomy"]},
+]
+
+
+### NEPHROSTOMY (for pyelonephritis) ###
+
+NEPHROSTOMY_PROCEDURES_ICD9 = [
+    5503,  # Percutaneous nephrostomy without fragmentation
+    5592,  # Percutaneous aspiration of kidney (pelvis)
+]
+
+NEPHROSTOMY_PROCEDURES_ICD9_TITLES = [
+    "Percutaneous nephrostomy without fragmentation",
+    "Percutaneous aspiration of kidney (pelvis)",
+]
+
+NEPHROSTOMY_PROCEDURES_ICD10 = [
+    "0T9030Z",  # Drainage of Right Kidney with Drainage Device, Percutaneous Approach
+    "0T9130Z",  # Drainage of Left Kidney with Drainage Device, Percutaneous Approach
+    "0T25X0Z",  # Change Drainage Device in Kidney, External Approach
+]
+
+NEPHROSTOMY_PROCEDURES_ICD10_TITLES = [
+    "Drainage of Right Kidney with Drainage Device, Percutaneous Approach",
+    "Drainage of Left Kidney with Drainage Device, Percutaneous Approach",
+    "Change Drainage Device in Kidney, External Approach",
+]
+
+NEPHROSTOMY_PROCEDURES_KEYWORDS = [
+    "nephrostomy",
+    "percutaneous nephrostomy",
+    "pcn",
+    "nephrostomy tube",
+]
+
+ALTERNATE_NEPHROSTOMY_KEYWORDS = [
+    {"location": "kidney", "modifiers": ["drain", "drainage", "catheter"]},
+    {"location": "renal", "modifiers": ["drain", "drainage", "catheter"]},
+]
+
+
+### URETERAL PROCEDURES (for pyelonephritis) ###
+
+URETERAL_PROCEDURES_ICD9 = [
+    598,   # Ureteral catheterization
+    560,   # Transurethral removal of obstruction from ureter and renal pelvis
+    9762,  # Removal of ureterostomy tube and ureteral catheter
+]
+
+URETERAL_PROCEDURES_ICD9_TITLES = [
+    "Ureteral catheterization",
+    "Transurethral removal of obstruction from ureter and renal pelvis",
+    "Removal of ureterostomy tube and ureteral catheter",
+]
+
+URETERAL_PROCEDURES_ICD10 = [
+    "0T788DZ",  # Dilation of Bilateral Ureters with Intraluminal Device, Via Natural or Artificial Opening Endoscopic
+    "0TPBX0Z",  # Removal of Drainage Device from Bladder, External Approach
+    "0TJB8ZZ",  # Inspection of Bladder, Via Natural or Artificial Opening Endoscopic
+]
+
+URETERAL_PROCEDURES_ICD10_TITLES = [
+    "Dilation of Bilateral Ureters with Intraluminal Device, Via Natural or Artificial Opening Endoscopic",
+    "Removal of Drainage Device from Bladder, External Approach",
+    "Inspection of Bladder, Via Natural or Artificial Opening Endoscopic",
+]
+
+URETERAL_PROCEDURES_KEYWORDS = [
+    "ureteral stent",
+    "ureteral catheter",
+    "cystoscopy",
+    "lithotripsy",
+    "retrograde pyelogram",
+]
+
+ALTERNATE_URETERAL_KEYWORDS = [
+    {"location": "ureter", "modifiers": ["stent", "catheter", "drain"]},
+]

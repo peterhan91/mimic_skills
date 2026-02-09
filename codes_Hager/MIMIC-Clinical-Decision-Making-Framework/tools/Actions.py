@@ -11,6 +11,9 @@ from agents.prompts import (
     DIAGNOSTIC_CRITERIA_CHOLECYSTITIS,
     DIAGNOSTIC_CRITERIA_DIVERTICULITIS,
     DIAGNOSTIC_CRITERIA_PANCREATITIS,
+    DIAGNOSTIC_CRITERIA_CHOLANGITIS,
+    DIAGNOSTIC_CRITERIA_BOWEL_OBSTRUCTION,
+    DIAGNOSTIC_CRITERIA_PYELONEPHRITIS,
 )
 
 
@@ -207,6 +210,9 @@ def retrieve_diagnostic_criteria(
         "cholecystitis": DIAGNOSTIC_CRITERIA_CHOLECYSTITIS,
         "diverticulitis": DIAGNOSTIC_CRITERIA_DIVERTICULITIS,
         "pancreatitis": DIAGNOSTIC_CRITERIA_PANCREATITIS,
+        "cholangitis": DIAGNOSTIC_CRITERIA_CHOLANGITIS,
+        "bowel obstruction": DIAGNOSTIC_CRITERIA_BOWEL_OBSTRUCTION,
+        "pyelonephritis": DIAGNOSTIC_CRITERIA_PYELONEPHRITIS,
     }
     for patho in action_input:
         patho_match, score = process.extractOne(patho, name_to_criteria.keys())
