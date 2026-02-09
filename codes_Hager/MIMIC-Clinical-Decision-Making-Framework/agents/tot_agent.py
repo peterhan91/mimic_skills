@@ -393,10 +393,10 @@ def build_tot_runner(
     skill_inject="examples",
     annotate_clinical=False,
     # ToT-specific params
-    tot_n_generate=3,
-    tot_breadth=2,
+    tot_n_generate=10,
+    tot_breadth=3,
     tot_max_depth=10,
-    tot_temperature=0.7,
+    tot_temperature=1.0,
     tot_eval_temperature=0.0,
 ):
     """Build a TreeOfThoughtsRunner with the same interface as build_agent_executor_ZeroShot."""
