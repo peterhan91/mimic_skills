@@ -1,7 +1,10 @@
 from typing import Union, Dict, Type, List
 from pydantic import BaseModel, Field
 
-from langchain.tools import BaseTool
+try:
+    from langchain.tools import BaseTool
+except ImportError:
+    from pydantic import BaseModel as BaseTool
 import pandas as pd
 
 from tools.Actions import get_action_results, Actions

@@ -2,8 +2,15 @@ from typing import Union, List, Dict
 import re
 
 import pandas as pd
-from langchain.agents import AgentOutputParser
-from langchain.schema import AgentFinish
+try:
+    from langchain.agents import AgentOutputParser
+except ImportError:
+    from pydantic import BaseModel as AgentOutputParser
+try:
+    from langchain.schema import AgentFinish
+except ImportError:
+    from collections import namedtuple
+    AgentFinish = namedtuple("AgentFinish", ["return_values", "log"])
 from thefuzz import process
 
 from tools.Actions import Actions, is_valid_action
