@@ -579,10 +579,10 @@ class ClinicalEvoTest:
                 failures = identify_failures(data)
                 all_failures.extend(failures)
 
-            # Pick up to 2 per pathology
+            # Pick up to 3 per pathology, max 12 total
             for pathology in self.pathologies:
                 path_failures = [f for f in all_failures if f["pathology"] == pathology]
-                for fail in path_failures[:2]:
+                for fail in path_failures[:3]:
                     admission = fail["admission"]
                     reasons = ", ".join(fail["reasons"])
                     analysis = (
@@ -593,7 +593,7 @@ class ClinicalEvoTest:
                         f"{format_discharge_summary(admission)}\n```\n"
                     )
                     gap_analyses.append(analysis)
-            gap_analyses = gap_analyses[:14]
+            gap_analyses = gap_analyses[:12]
 
         gap_section = "\n".join(gap_analyses) if gap_analyses else "(no failures to analyze)"
 
@@ -637,21 +637,22 @@ class ClinicalEvoTest:
 
 ## Your Task
 
-Generate an improved GENERAL clinical reasoning workflow skill for diagnosing patients presenting with acute abdominal pain. The skill must work for ANY abdominal condition — not just a fixed set of diseases. This skill must:
+Generate an improved GENERAL clinical reasoning workflow skill for diagnosing patients presenting with acute abdominal pain. This skill must:
 
-1. **Teach hypothesis-driven diagnostic reasoning** — maintain a running differential, choose each test to maximally discriminate between remaining hypotheses. Do NOT write disease-specific decision trees or "if symptom X then disease Y" rules.
-2. **Teach organ-system-based localization** — map pain location to anatomical structures (e.g., RUQ → hepatobiliary, gallbladder, right kidney, hepatic flexure; epigastric → stomach, pancreas, aorta), then reason about which organ is affected based on additional findings.
-3. **Address the specific failure patterns above** — focus on what went wrong and teach the correct REASONING APPROACH (not a disease-specific fix).
-4. **Work for ANY acute abdominal condition** — the skill must generalize to diseases the agent has never seen, including obstruction, ischemia, perforation, renal, gynecological, and vascular causes.
-5. **Stay under 500 tokens** — concise, actionable instructions.
-6. **NOT use disease names** — use ____ as a mask. Do NOT use thinly-disguised patterns like "____itis (appendiceal)" that effectively name the disease.
+1. **Teach hypothesis-driven diagnostic reasoning** — maintain a running differential diagnosis, and choose each test to maximally reduce uncertainty between remaining hypotheses
+2. **Address the specific failure patterns above** — focus on what went wrong and teach the correct approach
+3. **Be grounded in evidence** — use both the discharge summary evidence AND the clinical practice guidelines provided
+4. **Work across ALL pathologies** — must handle appendicitis, cholecystitis, diverticulitis, pancreatitis and any other acute abdominal pain cause
+5. **Stay under 500 tokens** — concise, actionable instructions
+6. **NOT use disease names** — use ____ as a mask for any disease or procedure name that would reveal the diagnosis
 
-Focus on PROCESS, not CONTENT:
-- ALWAYS do Physical Examination first — it localizes the problem and generates the initial differential
-- Select labs that discriminate between the top 2-3 hypotheses (not shotgun ordering)
-- Choose imaging modality by suspected organ system, not by suspected disease
-- Interpret results by updating the differential (which hypotheses are supported/eliminated?)
-- Decide treatment by severity indicators (peritonitis, sepsis, obstruction, perforation) not by diagnosis name
+The skill should be written as markdown with clear step-by-step instructions:
+- When to do Physical Examination (should always be FIRST)
+- How to select labs based on exam findings (not shotgun ordering)
+- How to choose imaging modality based on suspected pathology location
+- How to interpret lab values in context
+- When to recommend surgical vs conservative treatment
+- How to maintain and update a differential diagnosis after each observation
 
 Output ONLY the skill content in markdown format. No preamble or explanation."""
 

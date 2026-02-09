@@ -196,16 +196,10 @@ def build_aggregate_table(all_data):
 
 
 def build_evolver_prompt(all_data, all_failures, prev_skill=None, guidelines_context=None):
-    """Construct the full Evolver prompt from multiple pathologies.
-
-    The Evolver sees full clinical context (disease names, discharge summaries)
-    so it can reason about failure patterns effectively. The prompt instructs it
-    to produce disease-agnostic skills using ____ masks. The generated skill is
-    then sanitized by sanitize_skill_text() before injection into the agent.
-    """
+    """Construct the full Evolver prompt from multiple pathologies."""
     pathologies = [d["pathology"] for d in all_data]
     total_n = sum(d["n_patients"] for d in all_data)
-    n_groups = len(pathologies)
+    pathology_str = ", ".join(pathologies)
 
     # Build gap analysis for failures (limit to avoid token explosion)
     # Pick up to 3 failures per pathology, max 12 total
@@ -255,7 +249,7 @@ Use these to ground your skill in evidence-based diagnostic and treatment protoc
 
 """
 
-    prompt = f"""You are a clinical AI system optimizer. Your task is to analyze diagnostic agent trajectories and real discharge summaries from {total_n} patients across {n_groups} disease groups, then generate an improved clinical reasoning skill.
+    prompt = f"""You are a clinical AI system optimizer. Your task is to analyze diagnostic agent trajectories and real discharge summaries from {total_n} patients across {len(pathologies)} pathologies ({pathology_str}), then generate an improved clinical reasoning skill.
 
 ## Current Agent Performance
 
@@ -263,7 +257,7 @@ Use these to ground your skill in evidence-based diagnostic and treatment protoc
 
 {prev_skill_section}{guidelines_section}## Failed Trajectories with Gap Analysis
 
-Below are patients where the agent failed. For each, you see:
+Below are patients where the agent failed across different pathologies. For each, you see:
 1. What the agent did (its trajectory)
 2. What the real doctor did (the discharge summary)
 3. Why the agent failed
@@ -272,21 +266,21 @@ Below are patients where the agent failed. For each, you see:
 
 ## Your Task
 
-Generate a GENERAL clinical reasoning workflow skill for diagnosing patients presenting with acute abdominal pain. The skill must work for ANY abdominal condition — not just a fixed set of diseases. This skill must:
+Generate a GENERAL clinical reasoning workflow skill for diagnosing patients presenting with acute abdominal pain. This skill must:
 
-1. **Teach hypothesis-driven diagnostic reasoning** — maintain a running differential, choose each test to maximally discriminate between remaining hypotheses. Do NOT write disease-specific decision trees or "if symptom X then disease Y" rules.
-2. **Teach organ-system-based localization** — map pain location to anatomical structures (e.g., RUQ → hepatobiliary, gallbladder, right kidney, hepatic flexure; epigastric → stomach, pancreas, aorta), then reason about which organ is affected based on additional findings.
-3. **Address the specific failure patterns above** — focus on what went wrong and teach the correct REASONING APPROACH (not a disease-specific fix).
-4. **Work for ANY acute abdominal condition** — the skill must generalize to diseases the agent has never seen before, including bowel obstruction, mesenteric ischemia, ectopic pregnancy, renal colic, perforated viscus, etc.
-5. **Stay under 500 tokens** — concise, actionable instructions.
-6. **NOT use disease names** — use ____ as a mask for any disease or procedure name. Do NOT use thinly-disguised patterns like "____itis (appendiceal)" that effectively name the disease.
+1. **Teach systematic diagnostic reasoning** — the same workflow regardless of final diagnosis
+2. **Address the specific failure patterns above** — focus on what went wrong and teach the correct approach
+3. **Be grounded in evidence** — use both the discharge summary evidence AND the clinical practice guidelines provided
+4. **Work across ALL pathologies** — must handle {pathology_str} and any other acute abdominal pain cause
+5. **Stay under 500 tokens** — concise, actionable instructions
+6. **NOT use disease names** — use ____ as a mask for any disease or procedure name that would reveal the diagnosis (e.g., write "surgical intervention" instead of a specific procedure name)
 
-Focus on PROCESS, not CONTENT:
-- ALWAYS do Physical Examination first — it localizes the problem and generates the initial differential
-- Select labs that discriminate between the top 2-3 hypotheses (not shotgun ordering)
-- Choose imaging modality by suspected organ system, not by suspected disease
-- Interpret results by updating the differential (which hypotheses are supported/eliminated?)
-- Decide treatment by severity indicators (peritonitis, sepsis, obstruction, perforation) not by diagnosis name
+The skill should be written as markdown with clear step-by-step instructions that the agent can follow during its diagnostic reasoning loop. Focus on:
+- When to do Physical Examination (should always be FIRST)
+- How to select labs based on exam findings (not shotgun ordering)
+- How to choose imaging modality based on suspected pathology location
+- When to recommend surgical vs conservative treatment
+- How to interpret lab values in context (normal labs don't rule out surgical conditions)
 
 Output ONLY the skill content in markdown format. Do not include any preamble or explanation outside the skill itself."""
 
