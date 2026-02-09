@@ -5,7 +5,13 @@ from torch import Tensor
 
 from thefuzz import fuzz
 
-from langchain.evaluation import AgentTrajectoryEvaluator
+try:
+    from langchain.evaluation import AgentTrajectoryEvaluator
+except ImportError:
+    # Minimal stub — PathologyEvaluator only needs it as a base class
+    # and fully overrides _evaluate_agent_trajectory without calling super().
+    class AgentTrajectoryEvaluator:
+        pass
 from agents.AgentAction import AgentAction
 from utils.nlp import keyword_positive, remove_punctuation
 from agents.DiagnosisWorkflowParser import InvalidActionError

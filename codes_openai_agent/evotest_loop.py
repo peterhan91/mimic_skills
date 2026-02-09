@@ -62,6 +62,9 @@ if str(SCRIPTS_DIR) not in sys.path:
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
+# Disable OpenAI Agents SDK tracing (avoids 401 errors when OPENAI_API_KEY is dummy)
+os.environ.setdefault("OPENAI_AGENTS_DISABLE_TRACING", "1")
+
 # Load .env if present (for ANTHROPIC_API_KEY, etc.)
 _env_file = PROJECT_DIR / ".env"
 if _env_file.exists():
