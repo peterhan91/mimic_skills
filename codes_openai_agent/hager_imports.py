@@ -131,6 +131,13 @@ def get_evaluator_classes():
             sys.path.remove(p)
             _removed_paths.append(p)
 
+    # Also swap out our `tools` module from sys.modules — it's cached as
+    # codes_openai_agent/tools.py (a file), which blocks `tools.utils`.
+    _saved_tools = {}
+    for key in list(sys.modules.keys()):
+        if key == "tools" or key.startswith("tools."):
+            _saved_tools[key] = sys.modules.pop(key)
+
     sys.path.insert(0, _HAGER_ROOT)
     try:
         from evaluators.appendicitis_evaluator import AppendicitisEvaluator
@@ -151,6 +158,12 @@ def get_evaluator_classes():
         for p in _removed_paths:
             if p not in sys.path:
                 sys.path.insert(0, p)
+        # Restore our tools module (remove Hager's tools entries first)
+        for key in list(sys.modules.keys()):
+            if key == "tools" or key.startswith("tools."):
+                if key not in _saved_tools:
+                    sys.modules.pop(key, None)
+        sys.modules.update(_saved_tools)
         _restore_sdk_agents(saved)
 
 
