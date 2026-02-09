@@ -161,9 +161,9 @@ def print_metrics_table(per_pathology, per_metric):
         logger.info(sep)
 
 
-def append_episode_jsonl(episode_num, composite, best_score, per_pathology, per_metric, duration_s, parent_idx, node_idx):
+def append_episode_jsonl(episode_log, state_dir, episode_num, composite, best_score, per_pathology, per_metric, duration_s, parent_idx, node_idx):
     """Append one JSON line per episode to episode_log.jsonl for monitoring/plotting."""
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    state_dir.mkdir(parents=True, exist_ok=True)
     record = {
         "episode": episode_num,
         "node": node_idx,
@@ -175,7 +175,7 @@ def append_episode_jsonl(episode_num, composite, best_score, per_pathology, per_
         "per_metric": {k: round(v, 4) for k, v in per_metric.items()} if per_metric else {},
         "timestamp": datetime.now().isoformat(timespec="seconds"),
     }
-    with open(EPISODE_LOG, "a") as f:
+    with open(episode_log, "a") as f:
         f.write(json.dumps(record) + "\n")
 
 
@@ -233,6 +233,19 @@ class ClinicalEvoTest:
         self.base_models = os.environ.get(
             "HF_HOME", os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
         )
+
+        # Agent type and derived paths (allows parallel ZeroShot + ToT runs)
+        self.agent_type = getattr(args, "agent", "ZeroShot")
+        if self.agent_type == "ToT":
+            self.state_dir = PROJECT_DIR / "evotest_state_tot"
+            self.skills_dir = PROJECT_DIR / "skills" / "evo_tot"
+            self._run_prefix = "tot"
+        else:
+            self.state_dir = STATE_DIR
+            self.skills_dir = PROJECT_DIR / "skills" / "evo"
+            self._run_prefix = "evo"
+        self.state_file = self.state_dir / "state.json"
+        self.episode_log = self.state_dir / "episode_log.jsonl"
 
         # Load clinical guidelines for Evolver context
         self.guidelines_context = ""
@@ -358,7 +371,7 @@ class ClinicalEvoTest:
         trajectory_paths = []
 
         for pathology in self.pathologies:
-            traj_file = traj_dir / f"evo_ep0_{pathology}.json"
+            traj_file = traj_dir / f"{self._run_prefix}_ep0_{pathology}.json"
             if not traj_file.exists():
                 logger.warning(f"  Baseline trajectory not found: {traj_file}")
                 return None
@@ -380,7 +393,7 @@ class ClinicalEvoTest:
 
         Returns (composite_score, per_metric, per_pathology, trajectory_paths) or None on failure.
         """
-        descr = f"_evo_ep{episode_num}"
+        descr = f"_{self._run_prefix}_ep{episode_num}"
         skill_file = None
 
         # Save and sanitize skill if provided
@@ -418,6 +431,14 @@ class ClinicalEvoTest:
             ]
             if skill_file:
                 run_cmd.append(f"skill_path={skill_file}")
+            if self.agent_type != "ZeroShot":
+                run_cmd.append(f"agent={self.agent_type}")
+            if self.agent_type == "ToT":
+                for key in ("tot_n_generate", "tot_breadth", "tot_max_depth",
+                            "tot_temperature", "tot_eval_temperature"):
+                    val = getattr(self.args, key, None)
+                    if val is not None:
+                        run_cmd.append(f"{key}={val}")
 
             ok = run_subprocess(
                 run_cmd,
@@ -455,7 +476,7 @@ class ClinicalEvoTest:
 
             # --- 4. Extract trajectories ---
             self.traj_dir.mkdir(parents=True, exist_ok=True)
-            traj_output = self.traj_dir / f"evo_ep{episode_num}_{pathology}.json"
+            traj_output = self.traj_dir / f"{self._run_prefix}_ep{episode_num}_{pathology}.json"
             ok = run_subprocess(
                 [
                     "python", str(SCRIPTS_DIR / "extract_trajectories.py"),
@@ -662,8 +683,8 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
     # Persistence
     # ------------------------------------------------------------------
     def save_state(self):
-        """Save full tree to evotest_state/state.json."""
-        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        """Save full tree to state.json."""
+        self.state_dir.mkdir(parents=True, exist_ok=True)
         # Convert -inf to None for JSON serialization (json can't encode infinity)
         best_score_safe = self.best_score if math.isfinite(self.best_score) else None
         state = {
@@ -672,6 +693,7 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
             "best_score": best_score_safe,
             "last_episode_score": self.last_episode_score,
             "completed_episodes": self.completed_episodes,
+            "agent": self.agent_type,
             "args": {
                 "model": self.args.model,
                 "evolver_model": self.args.evolver_model,
@@ -682,16 +704,16 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                 "force_best_after_drop": self.args.force_best_after_drop,
             },
         }
-        with open(STATE_FILE, "w") as f:
+        with open(self.state_file, "w") as f:
             json.dump(state, f, indent=2, default=str)
-        logger.debug(f"  State saved to {STATE_FILE} ({len(self.nodes)} nodes)")
+        logger.debug(f"  State saved to {self.state_file} ({len(self.nodes)} nodes)")
 
     def load_state(self):
         """Load state from checkpoint. Returns True if successful."""
-        if not STATE_FILE.exists():
-            logger.warning(f"  No state file found at {STATE_FILE}")
+        if not self.state_file.exists():
+            logger.warning(f"  No state file found at {self.state_file}")
             return False
-        with open(STATE_FILE, "r") as f:
+        with open(self.state_file, "r") as f:
             state = json.load(f)
         self.nodes = state["nodes"]
         self.best_node_idx = state["best_node_idx"]
@@ -699,7 +721,7 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
         self.last_episode_score = state["last_episode_score"]
         self.completed_episodes = state["completed_episodes"]
         logger.info(
-            f"  Resumed from {STATE_FILE}: "
+            f"  Resumed from {self.state_file}: "
             f"{self.completed_episodes} episodes, "
             f"{len(self.nodes)} nodes, "
             f"best_score={self.best_score:.3f}"
@@ -715,7 +737,7 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
         episode_durations = []  # Track for ETA calculation
 
         # Setup logging
-        log_path = setup_logging(STATE_DIR)
+        log_path = setup_logging(self.state_dir)
 
         if self._guidelines_source:
             logger.info(f"  Loaded clinical guidelines ({len(self.guidelines_context)} chars) from {self._guidelines_source}")
@@ -734,15 +756,17 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
             return
 
         logger.info(f"{'='*70}")
-        logger.info(f"EvoTest Clinical | {total_episodes} episodes | {len(self.pathologies)} pathologies")
+        logger.info(f"EvoTest Clinical | {total_episodes} episodes | {len(self.pathologies)} pathologies | agent={self.agent_type}")
         logger.info(f"{'='*70}")
+        logger.info(f"  Agent:            {self.agent_type}")
         logger.info(f"  Model:            {self.args.model}")
         logger.info(f"  Evolver:          {self.args.evolver_model}")
         logger.info(f"  Annotate clinical:{self.args.annotate_clinical}")
         logger.info(f"  UCB c={self.args.exploration_constant}, alpha={self.args.depth_constant}")
         logger.info(f"  Drop threshold:   {self.args.drop_threshold}")
+        logger.info(f"  State dir:        {self.state_dir}")
         logger.info(f"  Log file:         {log_path}")
-        logger.info(f"  Episode log:      {EPISODE_LOG}")
+        logger.info(f"  Episode log:      {self.episode_log}")
         logger.info(f"{'='*70}")
 
         consecutive_failures = 0
@@ -900,6 +924,8 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
 
             # Append to structured episode log
             append_episode_jsonl(
+                episode_log=self.episode_log,
+                state_dir=self.state_dir,
                 episode_num=episode_num,
                 composite=node["score"],
                 best_score=self.best_score,
@@ -926,7 +952,7 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
         if episode_durations:
             logger.info(f"  Avg/episode:  {format_duration(sum(episode_durations) / len(episode_durations))}")
         logger.info(f"  Log file:     {log_path}")
-        logger.info(f"  Episode log:  {EPISODE_LOG}")
+        logger.info(f"  Episode log:  {self.episode_log}")
 
         if self.best_node_idx is not None:
             best = self.nodes[self.best_node_idx]
@@ -1030,6 +1056,30 @@ def main():
     parser.add_argument(
         "--pathologies", type=str, nargs="+", default=ALL_PATHOLOGIES,
         help="Pathologies to train on (default: all 7)"
+    )
+    parser.add_argument(
+        "--agent", type=str, default="ZeroShot", choices=["ZeroShot", "ToT"],
+        help="Agent type: ZeroShot (default) or ToT (Tree of Thoughts)"
+    )
+    parser.add_argument(
+        "--tot-n-generate", type=int, default=None, dest="tot_n_generate",
+        help="ToT: number of candidate actions per step (default: from config)"
+    )
+    parser.add_argument(
+        "--tot-breadth", type=int, default=None, dest="tot_breadth",
+        help="ToT: frontier size (keep top-b paths) (default: from config)"
+    )
+    parser.add_argument(
+        "--tot-max-depth", type=int, default=None, dest="tot_max_depth",
+        help="ToT: maximum search depth (default: from config)"
+    )
+    parser.add_argument(
+        "--tot-temperature", type=float, default=None, dest="tot_temperature",
+        help="ToT: sampling temperature for generation (default: from config)"
+    )
+    parser.add_argument(
+        "--tot-eval-temperature", type=float, default=None, dest="tot_eval_temperature",
+        help="ToT: temperature for path evaluation (default: from config)"
     )
     parser.add_argument(
         "--dry-run", action="store_true",

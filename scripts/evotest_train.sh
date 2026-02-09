@@ -22,13 +22,23 @@ set -euo pipefail
 #   bash scripts/evotest_train.sh 10 Qwen3_30B_A3B claude-opus-4-6 True
 #   bash scripts/evotest_train.sh 10 Qwen3_30B_A3B claude-opus-4-6 True skills/v2/acute_abdominal_pain.md
 #
+# Tree of Thoughts (parallel with ZeroShot, separate state):
+#   bash scripts/evotest_train.sh --agent ToT 10 Qwen3_30B_A3B
+#
 # Resume after interruption:
 #   bash scripts/evotest_train.sh --resume [EPISODES]
 # ============================================================
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-SKILLS_DIR="$PROJECT_DIR/skills/evo"
-STATE_FILE="$PROJECT_DIR/evotest_state/state.json"
+if [ "$AGENT" = "ToT" ]; then
+    SKILLS_DIR="$PROJECT_DIR/skills/evo_tot"
+    STATE_FILE="$PROJECT_DIR/evotest_state_tot/state.json"
+    RUN_PREFIX="tot"
+else
+    SKILLS_DIR="$PROJECT_DIR/skills/evo"
+    STATE_FILE="$PROJECT_DIR/evotest_state/state.json"
+    RUN_PREFIX="evo"
+fi
 LOG_DIR="$PROJECT_DIR/logs"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
@@ -36,10 +46,16 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 # Parse arguments
 # ============================================================
 RESUME=false
-if [ "${1:-}" = "--resume" ]; then
-    RESUME=true
-    shift
-fi
+AGENT="ZeroShot"
+while [ "${1:-}" = "--resume" ] || [ "${1:-}" = "--agent" ]; do
+    if [ "$1" = "--resume" ]; then
+        RESUME=true
+        shift
+    elif [ "$1" = "--agent" ]; then
+        AGENT="${2:?--agent requires a value (ZeroShot or ToT)}"
+        shift 2
+    fi
+done
 
 EPISODES="${1:-10}"
 MODEL="${2:-Qwen3_30B_A3B}"
@@ -60,6 +76,7 @@ echo "============================================================"
 echo "EVOTEST EVOLUTIONARY OPTIMIZATION"
 echo "============================================================"
 echo ""
+echo "  Agent:             $AGENT"
 echo "  Episodes:          $EPISODES"
 echo "  Model:             $MODEL"
 echo "  Evolver:           $EVOLVER_MODEL"
@@ -107,6 +124,7 @@ EVOTEST_CMD=(
     --model "$MODEL"
     --evolver-model "$EVOLVER_MODEL"
     --annotate-clinical "$ANNOTATE_CLINICAL"
+    --agent "$AGENT"
     --pathologies "${TRAIN_PATHOLOGIES[@]}"
 )
 
@@ -134,7 +152,7 @@ TRAJ_DIR="$PROJECT_DIR/trajectories"
 if [ "$RESUME" = false ] && [ -z "$INITIAL_SKILL" ] && [ -d "$TRAJ_DIR" ]; then
     BASELINE_OK=true
     for PATHOLOGY in "${TRAIN_PATHOLOGIES[@]}"; do
-        if [ ! -f "$TRAJ_DIR/evo_ep0_${PATHOLOGY}.json" ]; then
+        if [ ! -f "$TRAJ_DIR/${RUN_PREFIX}_ep0_${PATHOLOGY}.json" ]; then
             BASELINE_OK=false
             break
         fi

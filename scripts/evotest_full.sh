@@ -7,18 +7,34 @@ set -euo pipefail
 # Usage:
 #   bash scripts/evotest_full.sh [EPISODES] [MODEL] [EVOLVER_MODEL] [ANNOTATE_CLINICAL]
 #
+# Tree of Thoughts (parallel with ZeroShot, separate state):
+#   bash scripts/evotest_full.sh --agent ToT 10 Qwen3_30B_A3B
+#
 # Resume after interruption (skips to test if training is done):
 #   bash scripts/evotest_full.sh --resume [EPISODES] [MODEL] ...
 # ============================================================
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-STATE_FILE="$PROJECT_DIR/evotest_state/state.json"
 
-# Parse --resume flag
+# Parse flags (--resume, --agent)
 RESUME_FLAG=()
-if [ "${1:-}" = "--resume" ]; then
-    RESUME_FLAG=(--resume)
-    shift
+AGENT_FLAG=()
+AGENT="ZeroShot"
+while [ "${1:-}" = "--resume" ] || [ "${1:-}" = "--agent" ]; do
+    if [ "$1" = "--resume" ]; then
+        RESUME_FLAG=(--resume)
+        shift
+    elif [ "$1" = "--agent" ]; then
+        AGENT="${2:?--agent requires a value (ZeroShot or ToT)}"
+        AGENT_FLAG=(--agent "$AGENT")
+        shift 2
+    fi
+done
+
+if [ "$AGENT" = "ToT" ]; then
+    STATE_FILE="$PROJECT_DIR/evotest_state_tot/state.json"
+else
+    STATE_FILE="$PROJECT_DIR/evotest_state/state.json"
 fi
 
 EPISODES="${1:-10}"
@@ -30,6 +46,7 @@ echo ""
 echo "==========================================================="
 echo " FULL EXPERIMENT: Train 4×10 → Best Skill → Test 7×100"
 echo "==========================================================="
+echo "  Agent:     $AGENT"
 echo "  Episodes:  $EPISODES"
 echo "  Model:     $MODEL"
 echo "  Evolver:   $EVOLVER_MODEL"
@@ -43,6 +60,7 @@ echo ""
 
 bash "$PROJECT_DIR/scripts/evotest_train.sh" \
     "${RESUME_FLAG[@]+"${RESUME_FLAG[@]}"}" \
+    "${AGENT_FLAG[@]+"${AGENT_FLAG[@]}"}" \
     "$EPISODES" "$MODEL" "$EVOLVER_MODEL" "$ANNOTATE_CLINICAL"
 
 # ============================================================
@@ -85,6 +103,7 @@ echo "########### STEP 3: Test Evaluation (7×100) ###########"
 echo ""
 
 bash "$PROJECT_DIR/scripts/evotest_test.sh" \
+    "${AGENT_FLAG[@]+"${AGENT_FLAG[@]}"}" \
     "$BEST_SKILL" "$MODEL" "$ANNOTATE_CLINICAL"
 
 echo ""

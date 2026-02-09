@@ -26,7 +26,13 @@ set -euo pipefail
 # Requires vLLM to be running if using a vLLM_* model.
 # ============================================================
 
-BEST_SKILL="${1:?Usage: $0 <BEST_SKILL_PATH> [MODEL] [ANNOTATE_CLINICAL]}"
+AGENT="ZeroShot"
+if [ "${1:-}" = "--agent" ]; then
+    AGENT="${2:?--agent requires a value (ZeroShot or ToT)}"
+    shift 2
+fi
+
+BEST_SKILL="${1:?Usage: $0 [--agent ToT] <BEST_SKILL_PATH> [MODEL] [ANNOTATE_CLINICAL]}"
 MODEL="${2:-vLLM_Qwen3}"
 ANNOTATE_CLINICAL="${3:-True}"
 
@@ -177,6 +183,7 @@ for P in "${PATHOLOGIES[@]}"; do
     python run.py \
         pathology="$P" \
         model="$MODEL" \
+        agent="$AGENT" \
         base_mimic="$DATA_DIR/$P" \
         base_models="$BASE_MODELS" \
         lab_test_mapping_path="$LAB_TEST_MAPPING" \
@@ -238,6 +245,7 @@ for P in "${PATHOLOGIES[@]}"; do
     python run.py \
         pathology="$P" \
         model="$MODEL" \
+        agent="$AGENT" \
         base_mimic="$DATA_DIR/$P" \
         base_models="$BASE_MODELS" \
         lab_test_mapping_path="$LAB_TEST_MAPPING" \
