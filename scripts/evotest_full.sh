@@ -72,6 +72,12 @@ echo ""
 
 [ -f "$STATE_FILE" ] || { echo "ERROR: $STATE_FILE not found"; exit 1; }
 
+if [ "$AGENT" = "ToT" ]; then
+    SKILLS_SUBDIR="skills/evo_tot"
+else
+    SKILLS_SUBDIR="skills/evo"
+fi
+
 BEST_SKILL=$(python3 -c "
 import json, sys
 with open('$STATE_FILE') as f:
@@ -87,7 +93,7 @@ if best_idx is None:
     print('ERROR: No nodes in state', file=sys.stderr); sys.exit(1)
 ep = state['nodes'][best_idx]['episode_num']
 composite = state['nodes'][best_idx]['score']
-print(f'skills/evo/episode_{ep}.md')
+print(f'$SKILLS_SUBDIR/episode_{ep}.md')
 print(f'  Episode {ep}, Dx accuracy {best_dx:.3f}, composite {composite:.3f}', file=sys.stderr)
 ")
 

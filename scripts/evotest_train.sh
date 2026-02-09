@@ -30,20 +30,11 @@ set -euo pipefail
 # ============================================================
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-if [ "$AGENT" = "ToT" ]; then
-    SKILLS_DIR="$PROJECT_DIR/skills/evo_tot"
-    STATE_FILE="$PROJECT_DIR/evotest_state_tot/state.json"
-    RUN_PREFIX="tot"
-else
-    SKILLS_DIR="$PROJECT_DIR/skills/evo"
-    STATE_FILE="$PROJECT_DIR/evotest_state/state.json"
-    RUN_PREFIX="evo"
-fi
 LOG_DIR="$PROJECT_DIR/logs"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # ============================================================
-# Parse arguments
+# Parse arguments (flags first, then positional)
 # ============================================================
 RESUME=false
 AGENT="ZeroShot"
@@ -62,6 +53,17 @@ MODEL="${2:-Qwen3_30B_A3B}"
 EVOLVER_MODEL="${3:-claude-opus-4-6}"
 ANNOTATE_CLINICAL="${4:-True}"
 INITIAL_SKILL="${5:-}"
+
+# Agent-derived paths (must be after flag parsing)
+if [ "$AGENT" = "ToT" ]; then
+    SKILLS_DIR="$PROJECT_DIR/skills/evo_tot"
+    STATE_FILE="$PROJECT_DIR/evotest_state_tot/state.json"
+    RUN_PREFIX="tot"
+else
+    SKILLS_DIR="$PROJECT_DIR/skills/evo"
+    STATE_FILE="$PROJECT_DIR/evotest_state/state.json"
+    RUN_PREFIX="evo"
+fi
 
 # Train on 4 original pathologies; test on all 7 (via evotest_test.sh)
 TRAIN_PATHOLOGIES=(appendicitis cholecystitis diverticulitis pancreatitis)
@@ -228,7 +230,7 @@ if best_idx is not None:
         print(f\"  Per-pathology:\")
         for p, s in pp.items():
             print(f\"    {p:20s}: {s:.3f}\")
-    best_skill = f'skills/evo/episode_{node[\"episode_num\"]}.md'
+    best_skill = f'$SKILLS_DIR/episode_{node[\"episode_num\"]}.md'
     print(f\"  Best skill:    {best_skill}\")
     print()
     # Tree structure
