@@ -289,6 +289,7 @@ def build_agent_executor_ZeroShot(
     # Load and inject skill if provided
     if skill_path:
         import os
+        import sys
         from loguru import logger as skill_logger
         if os.path.exists(skill_path):
             with open(skill_path, "r") as sf:
@@ -297,6 +298,25 @@ def build_agent_executor_ZeroShot(
                 parts = raw.split("---", 2)
                 if len(parts) >= 3:
                     raw = parts[2].strip()
+
+            # Sanitize: mask disease names to prevent diagnosis leakage.
+            # Hager's framework masks diseases with ____ in patient data;
+            # skills must follow the same convention.
+            try:
+                _proj_root = os.path.normpath(
+                    os.path.join(os.path.dirname(__file__), "..", "..", "..")
+                )
+                _scripts_dir = os.path.join(_proj_root, "scripts")
+                if _scripts_dir not in sys.path:
+                    sys.path.insert(0, _scripts_dir)
+                from sanitize_skill import sanitize_skill_text
+                raw = sanitize_skill_text(raw)
+                skill_logger.info("Sanitized skill text (disease names masked with ____)")
+            except ImportError:
+                skill_logger.warning(
+                    "Could not import sanitize_skill; skill injected without sanitization"
+                )
+
             skill_logger.info(f"Loaded skill from {skill_path} ({len(raw)} chars)")
             if skill_inject in ("examples", "both"):
                 tool_use_examples = f"\n{raw}\n\n" + tool_use_examples

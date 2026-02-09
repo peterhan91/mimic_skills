@@ -701,9 +701,9 @@ class SDKEvoTest:
 
         history_section = "\n".join(history_lines) if history_lines else "(first episode)"
 
-        # --- Section 2: Current performance (blinded: no disease names) ---
+        # --- Section 2: Current performance ---
         if trajectory_data_list:
-            aggregate_table = build_aggregate_table(trajectory_data_list, blind=True)
+            aggregate_table = build_aggregate_table(trajectory_data_list)
         else:
             aggregate_table = "(no trajectory data)"
 
@@ -743,10 +743,10 @@ class SDKEvoTest:
                     reasons = ", ".join(fail["reasons"])
                     analysis = (
                         f"---\n"
-                        f"{format_trajectory_summary(admission, pathology=fail['pathology'], blind=True)}\n\n"
+                        f"{format_trajectory_summary(admission, pathology=fail['pathology'])}\n\n"
                         f"**Failure reasons**: {reasons}\n\n"
                         f"**Real Doctor's Discharge Summary**:\n```\n"
-                        f"{format_discharge_summary(admission, blind=True)}\n```\n"
+                        f"{format_discharge_summary(admission)}\n```\n"
                     )
                     gap_analyses.append(analysis)
             gap_analyses = gap_analyses[:14]

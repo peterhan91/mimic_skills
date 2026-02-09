@@ -544,9 +544,9 @@ class ClinicalEvoTest:
 
         history_section = "\n".join(history_lines) if history_lines else "(first episode)"
 
-        # --- Section 2: Current performance (blinded: no disease names) ---
+        # --- Section 2: Current performance ---
         if trajectory_data_list:
-            aggregate_table = build_aggregate_table(trajectory_data_list, blind=True)
+            aggregate_table = build_aggregate_table(trajectory_data_list)
         else:
             aggregate_table = "(no trajectory data)"
 
@@ -578,7 +578,7 @@ class ClinicalEvoTest:
                 failures = identify_failures(data)
                 all_failures.extend(failures)
 
-            # Pick up to 2 per pathology, max 14 total (blinded: no disease tags)
+            # Pick up to 2 per pathology, max 14 total
             for pathology in PATHOLOGIES:
                 path_failures = [f for f in all_failures if f["pathology"] == pathology]
                 for fail in path_failures[:2]:
@@ -586,10 +586,10 @@ class ClinicalEvoTest:
                     reasons = ", ".join(fail["reasons"])
                     analysis = (
                         f"---\n"
-                        f"{format_trajectory_summary(admission, pathology=fail['pathology'], blind=True)}\n\n"
+                        f"{format_trajectory_summary(admission, pathology=fail['pathology'])}\n\n"
                         f"**Failure reasons**: {reasons}\n\n"
                         f"**Real Doctor's Discharge Summary**:\n```\n"
-                        f"{format_discharge_summary(admission, blind=True)}\n```\n"
+                        f"{format_discharge_summary(admission)}\n```\n"
                     )
                     gap_analyses.append(analysis)
             gap_analyses = gap_analyses[:14]

@@ -32,25 +32,11 @@ Requires: ANTHROPIC_API_KEY environment variable.
 import argparse
 import json
 import os
-import re
 import sys
 from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_GUIDELINES_DIR = PROJECT_DIR / "guidelines"
-
-# Import sanitizer for blinding Evolver inputs
-sys.path.insert(0, str(PROJECT_DIR / "scripts"))
-from sanitize_skill import sanitize_skill_text, DISEASE_TERMS
-
-
-def sanitize_text_for_evolver(text: str) -> str:
-    """Mask disease names in Evolver inputs (discharge summaries, trajectories).
-
-    Uses the same DISEASE_TERMS as sanitize_skill.py to prevent the Evolver
-    from seeing ground-truth diagnoses and writing disease-specific rules.
-    """
-    return sanitize_skill_text(text)
 
 
 def load_guidelines_context(guidelines_dir, pathologies=None):
@@ -123,18 +109,10 @@ def identify_failures(data):
     return failures
 
 
-def format_trajectory_summary(admission, pathology=None, blind=False):
-    """Format a single admission trajectory for the Evolver prompt.
-
-    Args:
-        blind: If True, omit pathology tag and sanitize text to prevent
-               the Evolver from seeing ground-truth diagnoses.
-    """
+def format_trajectory_summary(admission, pathology=None):
+    """Format a single admission trajectory for the Evolver prompt."""
     lines = []
-    if blind:
-        path_tag = ""
-    else:
-        path_tag = f" [{pathology}]" if pathology else ""
+    path_tag = f" [{pathology}]" if pathology else ""
     lines.append(f"### Patient hadm_id={admission['hadm_id']}{path_tag}")
     lines.append(f"**Input**: {admission['input'][:500]}...")
     lines.append("")
@@ -162,38 +140,27 @@ def format_trajectory_summary(admission, pathology=None, blind=False):
     return "\n".join(lines)
 
 
-def format_discharge_summary(admission, blind=False):
-    """Format the real doctor's discharge summary for comparison.
-
-    Args:
-        blind: If True, sanitize disease names from the discharge summary.
-    """
+def format_discharge_summary(admission):
+    """Format the real doctor's discharge summary for comparison."""
     ds = admission.get("discharge_summary", "")
     if not ds:
         return "(No discharge summary available)"
     # Truncate to reasonable length
     if len(ds) > 2000:
         ds = ds[:2000] + "\n... [truncated]"
-    if blind:
-        ds = sanitize_text_for_evolver(ds)
     return ds
 
 
-def build_aggregate_table(all_data, blind=False):
-    """Build aggregate scores table across all pathologies.
-
-    Args:
-        blind: If True, replace pathology names with anonymous "Group N" labels
-               so the Evolver cannot write disease-specific rules.
-    """
+def build_aggregate_table(all_data):
+    """Build aggregate scores table across all pathologies."""
     lines = [
-        "| Group | N | Diagnosis | PE First | Labs (avg) | Imaging (avg) | Invalid Tools |",
+        "| Pathology | N | Diagnosis | PE First | Labs (avg) | Imaging (avg) | Invalid Tools |",
         "|---|---|---|---|---|---|---|",
     ]
     for i, data in enumerate(all_data):
         agg = data["aggregate"]
         n = data["n_patients"]
-        label = f"Group {i+1}" if blind else data["pathology"]
+        label = data["pathology"]
 
         n_dx = sum(1 for a in data["admissions"] if a["scores"].get("Diagnosis", 0) > 0)
         n_pe = sum(1 for a in data["admissions"] if a["scores"].get("Physical Examination", 0) > 0)
@@ -228,17 +195,13 @@ def build_aggregate_table(all_data, blind=False):
     return "\n".join(lines)
 
 
-def build_evolver_prompt(all_data, all_failures, prev_skill=None, guidelines_context=None,
-                         blind=True):
+def build_evolver_prompt(all_data, all_failures, prev_skill=None, guidelines_context=None):
     """Construct the full Evolver prompt from multiple pathologies.
 
-    Args:
-        blind: If True (default), hide disease identities from the Evolver:
-               - Replace pathology names with "Group N" in aggregate table
-               - Remove [pathology] tags from trajectory headers
-               - Sanitize disease names from discharge summaries
-               This forces the Evolver to teach general reasoning process
-               rather than disease-specific lookup rules.
+    The Evolver sees full clinical context (disease names, discharge summaries)
+    so it can reason about failure patterns effectively. The prompt instructs it
+    to produce disease-agnostic skills using ____ masks. The generated skill is
+    then sanitized by sanitize_skill_text() before injection into the agent.
     """
     pathologies = [d["pathology"] for d in all_data]
     total_n = sum(d["n_patients"] for d in all_data)
@@ -254,13 +217,13 @@ def build_evolver_prompt(all_data, all_failures, prev_skill=None, guidelines_con
             reasons = ", ".join(fail["reasons"])
             analysis = f"""
 ---
-{format_trajectory_summary(admission, pathology=fail['pathology'], blind=blind)}
+{format_trajectory_summary(admission, pathology=fail['pathology'])}
 
 **Failure reasons**: {reasons}
 
 **Real Doctor's Discharge Summary**:
 ```
-{format_discharge_summary(admission, blind=blind)}
+{format_discharge_summary(admission)}
 ```
 """
             gap_analyses.append(analysis)
@@ -296,7 +259,7 @@ Use these to ground your skill in evidence-based diagnostic and treatment protoc
 
 ## Current Agent Performance
 
-{build_aggregate_table(all_data, blind=blind)}
+{build_aggregate_table(all_data)}
 
 {prev_skill_section}{guidelines_section}## Failed Trajectories with Gap Analysis
 
