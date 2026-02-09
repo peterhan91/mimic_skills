@@ -58,13 +58,19 @@ BEST_SKILL=$(python3 -c "
 import json, sys
 with open('$STATE_FILE') as f:
     state = json.load(f)
-idx = state.get('best_node_idx')
-if idx is None:
-    print('ERROR: No best node in state', file=sys.stderr); sys.exit(1)
-ep = state['nodes'][idx]['episode_num']
-score = state['nodes'][idx]['score']
+# Pick the node with highest diagnosis accuracy (not composite score)
+best_idx, best_dx = None, -1.0
+for i, node in enumerate(state['nodes']):
+    dx = node.get('per_metric', {}).get('Diagnosis', 0)
+    if dx > best_dx:
+        best_dx = dx
+        best_idx = i
+if best_idx is None:
+    print('ERROR: No nodes in state', file=sys.stderr); sys.exit(1)
+ep = state['nodes'][best_idx]['episode_num']
+composite = state['nodes'][best_idx]['score']
 print(f'skills/evo/episode_{ep}.md')
-print(f'  Episode {ep}, score {score:.3f}', file=sys.stderr)
+print(f'  Episode {ep}, Dx accuracy {best_dx:.3f}, composite {composite:.3f}', file=sys.stderr)
 ")
 
 BEST_SKILL="$PROJECT_DIR/$BEST_SKILL"
