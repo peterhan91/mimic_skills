@@ -5,8 +5,9 @@ improve diagnostic accuracy from 0% to 76% on biased scenarios.
 Called by the orchestrator before finalizing a diagnosis.
 """
 
-from agents import Agent
+from agents import Agent, RunContextWrapper
 
+from context import PatientContext
 from models import ChallengerFeedback
 
 
@@ -25,6 +26,17 @@ CHALLENGER_INSTRUCTIONS = (
     "- If the evidence clearly points elsewhere, recommend 'reject'\n\n"
     "Your feedback helps prevent diagnostic errors."
 )
+
+
+def challenger_instructions(
+    ctx: RunContextWrapper[PatientContext],
+    agent: Agent,
+) -> str:
+    """Dynamic instructions: base + evolved skill if present."""
+    skill = ctx.context.challenger_skill
+    if skill:
+        return CHALLENGER_INSTRUCTIONS + f"\n\n## Evolved Skill\n\n{skill}"
+    return CHALLENGER_INSTRUCTIONS
 
 
 async def _extract_challenger_output(r):
@@ -46,7 +58,7 @@ def create_challenger_tool(model_name="gpt-4o-mini"):
     """
     challenger = Agent(
         name="Diagnostic Challenger",
-        instructions=CHALLENGER_INSTRUCTIONS,
+        instructions=challenger_instructions,
         output_type=ChallengerFeedback,
         model=model_name,
     )

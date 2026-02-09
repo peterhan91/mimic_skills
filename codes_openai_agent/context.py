@@ -20,6 +20,8 @@ class PatientContext:
     model_name: Any = "gpt-4o"  # str or LitellmModel instance
     annotate_clinical: bool = True
     skill_content: Optional[str] = None
+    lab_interpreter_skill: Optional[str] = None
+    challenger_skill: Optional[str] = None
 
     # Mutable state tracking — reset per patient
     already_requested_scans: dict = field(default_factory=dict)

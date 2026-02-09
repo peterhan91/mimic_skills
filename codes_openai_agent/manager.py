@@ -7,8 +7,9 @@ and returns structured results with tracing.
 
 import logging
 import os
+import re
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 import pandas as pd
 from agents import Runner, RunErrorHandlerResult, RunErrorHandlers, trace
@@ -30,7 +31,25 @@ class ManagerConfig:
     lab_test_mapping_path: str = "./MIMIC-CDM-IV/lab_test_mapping.pkl"
     annotate_clinical: bool = True
     skill_path: Optional[str] = None
+    sub_agent_skill_path: Optional[str] = None
     max_turns: int = 20
+
+
+def parse_sub_agent_skills(text: str) -> Dict[str, str]:
+    """Parse sub-agent skill file split by ``<!-- SECTION: name -->`` delimiters.
+
+    Returns dict mapping section name to content, e.g.
+    {"lab_interpreter": "...", "challenger": "..."}.
+    """
+    sections: Dict[str, str] = {}
+    parts = re.split(r"<!--\s*SECTION:\s*(\w+)\s*-->", text)
+    # parts = [preamble, name1, content1, name2, content2, ...]
+    for i in range(1, len(parts) - 1, 2):
+        name = parts[i].strip()
+        content = parts[i + 1].strip()
+        if content:
+            sections[name] = content
+    return sections
 
 
 class ClinicalDiagnosisManager:
@@ -44,6 +63,7 @@ class ClinicalDiagnosisManager:
         self.config = config
         self.lab_test_mapping_df = pd.read_pickle(config.lab_test_mapping_path)
         self._skill_content = self._load_skill()
+        self._sub_agent_skills = self._load_sub_agent_skills()
 
     def _load_skill(self) -> Optional[str]:
         """Load and strip YAML frontmatter from a SKILL.md file."""
@@ -60,6 +80,18 @@ class ClinicalDiagnosisManager:
                 raw = parts[2].strip()
 
         return raw
+
+    def _load_sub_agent_skills(self) -> Dict[str, str]:
+        """Load sub-agent skills from a section-delimited markdown file.
+
+        Returns dict with keys 'lab_interpreter' and/or 'challenger'.
+        """
+        path = self.config.sub_agent_skill_path
+        if not path or not os.path.exists(path):
+            return {}
+        with open(path, "r") as f:
+            raw = f.read()
+        return parse_sub_agent_skills(raw)
 
     async def run(self, patient_id: int, patient_data: dict):
         """Run diagnosis for a single patient.
@@ -79,6 +111,8 @@ class ClinicalDiagnosisManager:
             model_name=self.config.model,
             annotate_clinical=self.config.annotate_clinical,
             skill_content=self._skill_content,
+            lab_interpreter_skill=self._sub_agent_skills.get("lab_interpreter"),
+            challenger_skill=self._sub_agent_skills.get("challenger"),
         )
 
         orchestrator = create_orchestrator(

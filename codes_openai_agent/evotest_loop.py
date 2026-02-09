@@ -459,14 +459,31 @@ class SDKEvoTest:
     # ------------------------------------------------------------------
     # Episode Runner (async, in-process)
     # ------------------------------------------------------------------
-    async def run_episode(self, skill_text, episode_num):
+    async def run_episode(self, skill_text, episode_num, sub_agent_skill_text=None):
         """Run SDK agent on all pathologies with given skill, evaluate, score.
 
         All in-process via async Python — no subprocess overhead.
 
+        Args:
+            skill_text: Orchestrator skill text (or None).
+            episode_num: Episode number for file naming.
+            sub_agent_skill_text: Raw sub-agent skill text with section delimiters (or None).
+
         Returns (composite_score, per_metric, per_pathology, trajectory_paths) or None on failure.
         """
         skill_file = None
+        sub_agent_skill_file = None
+
+        # Save and sanitize sub-agent skill if provided
+        if sub_agent_skill_text:
+            self.skills_dir.mkdir(parents=True, exist_ok=True)
+            raw_sub_path = self.skills_dir / f"episode_{episode_num}_subagents_raw.md"
+            raw_sub_path.write_text(sub_agent_skill_text)
+
+            sanitized_sub = sanitize_skill_text(sub_agent_skill_text)
+            sub_agent_skill_file = self.skills_dir / f"episode_{episode_num}_subagents.md"
+            sub_agent_skill_file.write_text(sanitized_sub)
+            logger.info(f"  Saved sub-agent skill: {sub_agent_skill_file} ({len(sanitized_sub)} chars)")
 
         # Save and sanitize skill if provided
         if skill_text:
@@ -506,6 +523,7 @@ class SDKEvoTest:
                 lab_test_mapping_path=str(self.lab_test_mapping),
                 annotate_clinical=self.args.annotate_clinical,
                 skill_path=str(skill_file) if skill_file else None,
+                sub_agent_skill_path=str(sub_agent_skill_file) if sub_agent_skill_file else None,
                 max_turns=self.args.max_turns,
             )
             # sub_agent_model defaults to None → same as main model
@@ -798,6 +816,148 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
         return prompt
 
     # ------------------------------------------------------------------
+    # Sub-Agent Evolver
+    # ------------------------------------------------------------------
+    def evolve_sub_agent_skills(self, parent_node, trajectory_data_list, orchestrator_skill):
+        """Call the Evolver (Opus) to generate improved sub-agent skills.
+
+        Returns the raw text with ``<!-- SECTION: lab_interpreter -->`` and
+        ``<!-- SECTION: challenger -->`` delimiters.
+        """
+        prompt = self._build_sub_agent_evolver_prompt(
+            parent_node, trajectory_data_list, orchestrator_skill
+        )
+
+        if self.args.dry_run:
+            logger.info(f"\n{'='*60}")
+            logger.info("DRY RUN — Sub-Agent Evolver prompt:")
+            logger.info(f"{'='*60}")
+            logger.info(prompt[:3000])
+            if len(prompt) > 3000:
+                logger.info(f"... [{len(prompt) - 3000} chars truncated]")
+            logger.info(f"Sub-agent prompt length: {len(prompt)} chars")
+            return (
+                "<!-- SECTION: lab_interpreter -->\n(dry-run lab interpreter skill)\n\n"
+                "<!-- SECTION: challenger -->\n(dry-run challenger skill)"
+            )
+
+        logger.info(f"  Calling Sub-Agent Evolver ({self.args.evolver_model})...")
+        import anthropic
+
+        client = anthropic.Anthropic()
+        message = client.messages.create(
+            model=self.args.evolver_model,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        skill_text = message.content[0].text
+        logger.info(f"  Sub-Agent Evolver produced skill ({len(skill_text)} chars)")
+        return skill_text
+
+    def _build_sub_agent_evolver_prompt(self, parent_node, trajectory_data_list, orchestrator_skill):
+        """Build Evolver prompt for Lab Interpreter and Challenger sub-agents."""
+        # --- Performance data (same as orchestrator) ---
+        if trajectory_data_list:
+            aggregate_table = build_aggregate_table(trajectory_data_list)
+        else:
+            aggregate_table = "(no trajectory data)"
+
+        # --- Failed trajectories (focus on lab/reasoning failures) ---
+        gap_analyses = []
+        if trajectory_data_list:
+            all_failures = []
+            for data in trajectory_data_list:
+                failures = identify_failures(data)
+                all_failures.extend(failures)
+
+            for fail in all_failures[:8]:
+                admission = fail["admission"]
+                reasons = ", ".join(fail["reasons"])
+                analysis = (
+                    f"---\n"
+                    f"{format_trajectory_summary(admission, pathology=fail['pathology'])}\n\n"
+                    f"**Failure reasons**: {reasons}\n\n"
+                    f"**Real Doctor's Discharge Summary**:\n```\n"
+                    f"{format_discharge_summary(admission)}\n```\n"
+                )
+                gap_analyses.append(analysis)
+
+        gap_section = "\n".join(gap_analyses) if gap_analyses else "(no failures to analyze)"
+
+        # --- Parent sub-agent skills ---
+        parent_sub_section = ""
+        if parent_node and parent_node.get("sub_agent_skill_text"):
+            parent_sub_section = (
+                f"## Parent Sub-Agent Skills (for reference — improve these)\n\n"
+                f"```markdown\n{parent_node['sub_agent_skill_text']}\n```\n\n"
+            )
+
+        # --- Orchestrator skill context ---
+        orch_section = ""
+        if orchestrator_skill:
+            orch_section = (
+                f"## Current Orchestrator Skill\n\n"
+                f"The main diagnostic agent uses this skill. Your sub-agent skills should "
+                f"COMPLEMENT it (not duplicate). Focus on what the orchestrator does NOT cover:\n\n"
+                f"```markdown\n{orchestrator_skill[:500]}\n```\n\n"
+            )
+
+        # --- Clinical guidelines ---
+        guidelines_section = ""
+        if self.guidelines_context:
+            guidelines_section = (
+                f"## Evidence-Based Clinical Guidelines\n\n"
+                f"{self.guidelines_context}\n\n"
+            )
+
+        prompt = f"""You are a clinical AI system optimizer. Your task is to generate improved instructions for two specialist sub-agents that assist the main diagnostic agent.
+
+## Agent Architecture
+
+The diagnostic system has 3 agents:
+1. **Orchestrator** — main agent that examines, orders tests, reasons, diagnoses
+2. **Lab Interpreter** — specialist called after lab results to identify patterns and abnormalities
+3. **Challenger** — devil's advocate called before finalizing diagnosis to catch errors
+
+You are generating evolved skills for agents #2 and #3 ONLY.
+
+## Current Agent Performance
+
+{aggregate_table}
+
+{orch_section}{parent_sub_section}{guidelines_section}## Failed Trajectories
+
+{gap_section}
+
+## Your Task
+
+Generate improved skills for BOTH sub-agents. Output in this EXACT format with HTML comment delimiters:
+
+<!-- SECTION: lab_interpreter -->
+(Your improved Lab Interpreter instructions here — max 300 tokens)
+
+<!-- SECTION: challenger -->
+(Your improved Challenger instructions here — max 300 tokens)
+
+### Lab Interpreter Guidelines:
+- Focus on PATTERN recognition across multiple lab values
+- Teach which combinations of abnormalities point to specific pathological processes
+- Include reference ranges and what deviations mean clinically
+- Emphasize acute vs chronic patterns
+- Do NOT name specific diseases — describe pathological processes
+
+### Challenger Guidelines:
+- Focus on common ANCHORING BIASES in acute abdominal pain diagnosis
+- Teach which alternative diagnoses are commonly missed for each presentation
+- Include specific evidence patterns that should trigger reconsideration
+- Emphasize SEVERITY assessment — when conservative management is insufficient
+- Do NOT name specific diseases — describe pathological processes
+
+Output ONLY the two sections in the format above. No preamble or explanation."""
+
+        return prompt
+
+    # ------------------------------------------------------------------
     # Persistence
     # ------------------------------------------------------------------
     def save_state(self):
@@ -926,6 +1086,8 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                     "idx": 0,
                     "skill_text": skill_text,
                     "sanitized_skill": sanitize_skill_text(skill_text) if skill_text else "",
+                    "sub_agent_skill_text": "",
+                    "sanitized_sub_agent_skill": "",
                     "score": composite,
                     "per_metric": per_metric,
                     "per_pathology": per_pathology,
@@ -952,19 +1114,27 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                         with open(tpath, "r") as f:
                             trajectory_data_list.append(json.load(f))
 
-                # Evolve skill
+                # Evolve orchestrator skill
                 logger.info(f"  Evolving from node {parent_idx} (score={parent_node['score']:.3f})...")
                 new_skill = self.evolve_skill(parent_node, trajectory_data_list)
 
-                # Run episode with new skill
-                logger.info(f"  Running episode with evolved skill...")
-                result = await self.run_episode(new_skill, episode_num)
+                # Evolve sub-agent skills (second Opus call)
+                logger.info(f"  Evolving sub-agent skills...")
+                new_sub_agent_skill = self.evolve_sub_agent_skills(
+                    parent_node, trajectory_data_list, new_skill
+                )
+
+                # Run episode with both skills
+                logger.info(f"  Running episode with evolved skills...")
+                result = await self.run_episode(new_skill, episode_num, sub_agent_skill_text=new_sub_agent_skill)
                 if result is None:
                     logger.error(f"  Episode {episode_num} failed — creating failed node and continuing")
                     node = {
                         "idx": len(self.nodes),
                         "skill_text": new_skill,
                         "sanitized_skill": sanitize_skill_text(new_skill),
+                        "sub_agent_skill_text": new_sub_agent_skill or "",
+                        "sanitized_sub_agent_skill": sanitize_skill_text(new_sub_agent_skill) if new_sub_agent_skill else "",
                         "score": 0.0,
                         "per_metric": {},
                         "per_pathology": {},
@@ -990,6 +1160,8 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                     "idx": len(self.nodes),
                     "skill_text": new_skill,
                     "sanitized_skill": sanitize_skill_text(new_skill),
+                    "sub_agent_skill_text": new_sub_agent_skill or "",
+                    "sanitized_sub_agent_skill": sanitize_skill_text(new_sub_agent_skill) if new_sub_agent_skill else "",
                     "score": composite,
                     "per_metric": per_metric,
                     "per_pathology": per_pathology,

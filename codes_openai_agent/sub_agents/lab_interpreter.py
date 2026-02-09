@@ -5,8 +5,9 @@ Exposed to the orchestrator via .as_tool() — the orchestrator calls it
 after receiving raw lab results and gets structured interpretation back.
 """
 
-from agents import Agent
+from agents import Agent, RunContextWrapper
 
+from context import PatientContext
 from models import LabInterpretation
 
 
@@ -25,6 +26,17 @@ LAB_INTERPRETER_INSTRUCTIONS = (
     "process (e.g., 'acute inflammatory process' not 'appendicitis').\n"
     "Be concise and clinically precise."
 )
+
+
+def lab_interpreter_instructions(
+    ctx: RunContextWrapper[PatientContext],
+    agent: Agent,
+) -> str:
+    """Dynamic instructions: base + evolved skill if present."""
+    skill = ctx.context.lab_interpreter_skill
+    if skill:
+        return LAB_INTERPRETER_INSTRUCTIONS + f"\n\n## Evolved Skill\n\n{skill}"
+    return LAB_INTERPRETER_INSTRUCTIONS
 
 
 async def _extract_lab_output(r):
@@ -47,7 +59,7 @@ def create_lab_interpreter_tool(model_name="gpt-4o-mini"):
     """
     lab_interpreter = Agent(
         name="Lab Interpreter",
-        instructions=LAB_INTERPRETER_INSTRUCTIONS,
+        instructions=lab_interpreter_instructions,
         output_type=LabInterpretation,
         model=model_name,
     )
