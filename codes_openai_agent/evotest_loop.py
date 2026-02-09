@@ -443,7 +443,7 @@ class SDKEvoTest:
                     + 1.0 * min(s.get("Laboratory Tests", 0) / max_lab, 1.0)
                     + 1.0 * min(s.get("Imaging", 0) / 2.0, 1.0)
                     - 0.5 * min(s.get("Invalid Tools", 0), 2)
-                    - 0.3 * s.get("Action Parsing", 0)
+                    - 0.3 * (1 - s.get("Action Parsing", 0))
                 )
                 patient_scores.append(ps)
                 all_patient_scores.append(ps)

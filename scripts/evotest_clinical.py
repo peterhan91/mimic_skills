@@ -314,7 +314,7 @@ class ClinicalEvoTest:
           + 1.0 * (Laboratory Tests / max_lab_score)
           + 1.0 * (Imaging / 2.0)
           - 0.5 * Invalid Tools
-          - 0.3 * Action Parsing
+          - 0.3 * (1 - Action Parsing)
 
         Returns (composite, per_metric_aggregate, per_pathology).
         """
@@ -335,7 +335,7 @@ class ClinicalEvoTest:
                     + 1.0 * min(s.get("Laboratory Tests", 0) / max_lab, 1.0)
                     + 1.0 * min(s.get("Imaging", 0) / 2.0, 1.0)
                     - 0.5 * min(s.get("Invalid Tools", 0), 2)
-                    - 0.3 * s.get("Action Parsing", 0)
+                    - 0.3 * (1 - s.get("Action Parsing", 0))
                 )
                 patient_scores.append(ps)
                 all_patient_scores.append(ps)
