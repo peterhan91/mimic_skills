@@ -131,12 +131,17 @@ def get_evaluator_classes():
             sys.path.remove(p)
             _removed_paths.append(p)
 
-    # Also swap out our `tools` module from sys.modules — it's cached as
-    # codes_openai_agent/tools.py (a file), which blocks `tools.utils`.
+    # Also swap out our `tools` and `models` modules from sys.modules — they're
+    # cached as codes_openai_agent/tools.py and models.py (files), which block
+    # Hager's tools/ and models/ packages (e.g. tools.utils, models.utils).
     _saved_tools = {}
     for key in list(sys.modules.keys()):
         if key == "tools" or key.startswith("tools."):
             _saved_tools[key] = sys.modules.pop(key)
+    _saved_models = {}
+    for key in list(sys.modules.keys()):
+        if key == "models" or key.startswith("models."):
+            _saved_models[key] = sys.modules.pop(key)
 
     sys.path.insert(0, _HAGER_ROOT)
     try:
@@ -164,6 +169,12 @@ def get_evaluator_classes():
                 if key not in _saved_tools:
                     sys.modules.pop(key, None)
         sys.modules.update(_saved_tools)
+        # Restore our models module (remove Hager's models entries first)
+        for key in list(sys.modules.keys()):
+            if key == "models" or key.startswith("models."):
+                if key not in _saved_models:
+                    sys.modules.pop(key, None)
+        sys.modules.update(_saved_models)
         _restore_sdk_agents(saved)
 
 
