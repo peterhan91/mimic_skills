@@ -8,14 +8,19 @@ convention — otherwise we re-introduce the exact leakage the framework removes
 What we mask (consistent with Hager's CreateDataset.py sanitize_list, plus
 procedure names that map 1:1 to a specific disease):
 
-  appendicitis:   "acute appendicitis", "appendicitis", "appendectomy"
-  cholecystitis:  "acute cholecystitis", "cholecystitis", "cholecystostomy",
-                  "cholecystectomy"
-  pancreatitis:   "acute pancreatitis", "pancreatitis", "pancreatectomy"
-  diverticulitis: "acute diverticulitis", "diverticulitis"
+  appendicitis:      "acute appendicitis", "appendicitis", "appendectomy"
+  cholecystitis:     "acute cholecystitis", "cholecystitis", "cholecystostomy",
+                     "cholecystectomy"
+  pancreatitis:      "acute pancreatitis", "pancreatitis", "pancreatectomy"
+  diverticulitis:    "acute diverticulitis", "diverticulitis"
+  cholangitis:       "acute cholangitis", "ascending cholangitis", "cholangitis"
+  bowel obstruction: "small bowel obstruction", "large bowel obstruction",
+                     "bowel obstruction", "intestinal obstruction"
+  pyelonephritis:    "acute pyelonephritis", "pyelonephritis"
 
 What we do NOT mask (organ names / anatomical terms are needed for reasoning):
-  "appendix", "gallbladder", "pancreas", "colon", "cecum", "diverticulum"
+  "appendix", "gallbladder", "pancreas", "colon", "cecum", "diverticulum",
+  "bile duct", "kidney", "ureter", "bowel", "intestine"
 
 Usage:
   # Sanitize a skill file (prints to stdout)
@@ -44,18 +49,34 @@ MASK = "____"
 # Sorted longest-first so "acute appendicitis" matches before "appendicitis".
 DISEASE_TERMS = sorted(
     [
+        # Appendicitis
         "acute appendicitis",
         "appendicitis",
         "appendectomy",
+        # Cholecystitis
         "acute cholecystitis",
         "cholecystitis",
         "cholecystectomy",
         "cholecystostomy",
+        # Pancreatitis
         "acute pancreatitis",
         "pancreatitis",
         "pancreatectomy",
+        # Diverticulitis
         "acute diverticulitis",
         "diverticulitis",
+        # Cholangitis
+        "acute cholangitis",
+        "ascending cholangitis",
+        "cholangitis",
+        # Bowel obstruction
+        "small bowel obstruction",
+        "large bowel obstruction",
+        "bowel obstruction",
+        "intestinal obstruction",
+        # Pyelonephritis
+        "acute pyelonephritis",
+        "pyelonephritis",
     ],
     key=len,
     reverse=True,
