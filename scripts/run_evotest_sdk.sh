@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # ===========================================================================
-# EvoTest SDK — Evolutionary skill optimization with Claude Sonnet 4.5
+# EvoTest SDK — Evolutionary skill optimization with local vLLM + Claude Opus
 #
-# All three agents (Orchestrator, Lab Interpreter, Challenger) use Sonnet.
-# The Evolver (skill generator) uses Opus for strongest reasoning.
+# All three agents (Orchestrator, Lab Interpreter, Challenger) use Qwen3-30B-A3B
+# via a local vLLM server. The Evolver (skill generator) uses Claude Opus.
+#
+# Prerequisites:
+#   1. vLLM running: bash scripts/start_vllm.sh --tool-call
+#   2. Conda env:    conda activate mimic-sdk
 #
 # Usage:
 #   bash scripts/run_evotest_sdk.sh              # Full run (10 episodes, all pathologies)
@@ -18,8 +22,9 @@ set -euo pipefail
 # Configuration — edit these
 # ---------------------------------------------------------------------------
 EPISODES=10
-AGENT_MODEL="anthropic/claude-sonnet-4-5-20250929"
+AGENT_MODEL="openai/Qwen3-30B-A3B"
 EVOLVER_MODEL="claude-opus-4-6"
+VLLM_BASE_URL="http://localhost:8000/v1"
 SPLIT="train"                      # train (10 pts) | test (100 pts) | full
 MAX_TURNS=20
 ANNOTATE_CLINICAL=true             # true | false
@@ -44,7 +49,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # ---------------------------------------------------------------------------
-# Check API keys
+# Check prerequisites
 # ---------------------------------------------------------------------------
 if [ -f "$PROJECT_DIR/.env" ]; then
     set -a
@@ -57,6 +62,14 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
     exit 1
 fi
 
+# Check vLLM is running
+if ! curl -s "${VLLM_BASE_URL%/v1}/health" > /dev/null 2>&1; then
+    echo "ERROR: vLLM not running at $VLLM_BASE_URL"
+    echo "Start it first:  bash scripts/start_vllm.sh --tool-call"
+    exit 1
+fi
+echo "  vLLM: running at $VLLM_BASE_URL"
+
 # ---------------------------------------------------------------------------
 # Build command
 # ---------------------------------------------------------------------------
@@ -64,6 +77,7 @@ CMD=(
     python "$PROJECT_DIR/codes_openai_agent/evotest_loop.py"
     --episodes "$EPISODES"
     --litellm-model "$AGENT_MODEL"
+    --litellm-base-url "$VLLM_BASE_URL"
     --evolver-model "$EVOLVER_MODEL"
     --split "$SPLIT"
     --max-turns "$MAX_TURNS"
@@ -93,9 +107,10 @@ CMD+=("$@")
 # Run
 # ---------------------------------------------------------------------------
 echo "==========================================================="
-echo "EvoTest SDK"
+echo "EvoTest SDK (vLLM + Claude Opus)"
 echo "==========================================================="
 echo "  Agent model:   $AGENT_MODEL"
+echo "  vLLM endpoint: $VLLM_BASE_URL"
 echo "  Evolver model: $EVOLVER_MODEL"
 echo "  Episodes:      $EPISODES"
 echo "  Split:         $SPLIT"
