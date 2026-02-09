@@ -121,6 +121,16 @@ def get_evaluator_classes():
         return _evaluator_classes
 
     saved = _save_sdk_agents()
+
+    # Temporarily remove codes_openai_agent/ from sys.path so our tools.py
+    # doesn't shadow Hager's tools/ package (evaluators import tools.utils).
+    _our_root = os.path.dirname(os.path.abspath(__file__))
+    _removed_paths = []
+    for p in [_our_root]:
+        if p in sys.path:
+            sys.path.remove(p)
+            _removed_paths.append(p)
+
     sys.path.insert(0, _HAGER_ROOT)
     try:
         from evaluators.appendicitis_evaluator import AppendicitisEvaluator
@@ -138,6 +148,9 @@ def get_evaluator_classes():
     finally:
         if _HAGER_ROOT in sys.path:
             sys.path.remove(_HAGER_ROOT)
+        for p in _removed_paths:
+            if p not in sys.path:
+                sys.path.insert(0, p)
         _restore_sdk_agents(saved)
 
 
