@@ -111,7 +111,8 @@ for PATHOLOGY in "${TRAIN_PATHOLOGIES[@]}"; do
     DATA="$PROJECT_DIR/data_splits/$PATHOLOGY/train.pkl"
     HAGER="$PROJECT_DIR/data_splits/$PATHOLOGY/${PATHOLOGY}_hadm_info_first_diag.pkl"
     [ -f "$DATA" ] || { echo "ERROR: Patient data not found: $DATA"; exit 1; }
-    [ -f "$HAGER" ] || { echo "ERROR: Hager-format data not found: $HAGER"; exit 1; }
+    # Always copy train.pkl as _hadm_info_first_diag.pkl to prevent stale test data
+    cp "$DATA" "$HAGER"
 done
 
 echo "  All prerequisites OK"
