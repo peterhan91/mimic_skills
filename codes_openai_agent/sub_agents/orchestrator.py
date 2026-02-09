@@ -1,15 +1,13 @@
 """Orchestrator agent — main diagnostic agent with dynamic instructions.
 
 Uses direct tools (PE, Labs, Imaging, DiagCrit) and sub-agent tools
-(Lab Interpreter, Challenger) to diagnose patients. Produces a
-DiagnosticResult via structured output.
+(Lab Interpreter, Challenger) to diagnose patients. Produces text output
+that is parsed into a DiagnosticResult by the manager.
 """
 
 from agents import Agent, ModelSettings, RunContextWrapper
 
 from context import PatientContext
-from guardrails import diagnosis_guardrail
-from models import DiagnosticResult
 from tools import (
     physical_examination,
     laboratory_tests,
@@ -48,7 +46,13 @@ RULES:
 - Consider differential diagnoses throughout your reasoning
 - Your final diagnosis must be a single specific pathology
 - Treatment must include specific interventions (medications, procedures, supportive care)
-- Assess severity to guide treatment intensity"""
+- Assess severity to guide treatment intensity
+
+OUTPUT FORMAT:
+When you have completed your workup and are ready to diagnose, respond with:
+
+Final Diagnosis: [single specific pathology]
+Treatment: [specific interventions including medications, procedures, supportive care]"""
 
     # Inject skill content if available
     skill = ctx.context.skill_content
@@ -85,8 +89,6 @@ def create_orchestrator(model_name="gpt-4o", sub_agent_model_name=None) -> Agent
             lab_interpreter_tool,
             challenger_tool,
         ],
-        output_type=DiagnosticResult,
         model=model_name,
         model_settings=ModelSettings(temperature=0.0, parallel_tool_calls=False),
-        output_guardrails=[diagnosis_guardrail],
     )

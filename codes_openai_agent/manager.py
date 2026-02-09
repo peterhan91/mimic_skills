@@ -52,6 +52,34 @@ def parse_sub_agent_skills(text: str) -> Dict[str, str]:
     return sections
 
 
+def _parse_text_to_diagnostic_result(text: str) -> DiagnosticResult:
+    """Parse free-text agent output into a DiagnosticResult.
+
+    Extracts "Final Diagnosis:" and "Treatment:" lines using the same
+    patterns Hager's evaluator recognises. Falls back to the full text
+    as the diagnosis field when no pattern matches.
+    """
+    # Extract diagnosis
+    dx_match = re.search(
+        r"(?:Final\s+)?Diagnosis:\s*(.+?)(?:\n|$)", text, re.IGNORECASE
+    )
+    diagnosis = dx_match.group(1).strip() if dx_match else text.strip()[:200]
+
+    # Extract treatment
+    tx_match = re.search(r"Treatment:\s*(.+)", text, re.IGNORECASE | re.DOTALL)
+    treatment = tx_match.group(1).strip() if tx_match else ""
+
+    return DiagnosticResult(
+        reasoning=text,
+        diagnosis=diagnosis,
+        confidence="medium",
+        key_evidence=[],
+        differential=[],
+        treatment=treatment,
+        severity="unknown",
+    )
+
+
 class ClinicalDiagnosisManager:
     """Manages the end-to-end clinical diagnosis flow for a patient.
 
@@ -154,6 +182,11 @@ class ClinicalDiagnosisManager:
                 error_handlers=RunErrorHandlers(max_turns=_max_turns_handler),
             )
 
+        # Parse text output into DiagnosticResult if needed
+        final_output = result.final_output
+        if isinstance(final_output, str):
+            final_output = _parse_text_to_diagnostic_result(final_output)
+
         # Log token usage
         usage = result.context_wrapper.usage
         context.token_usage = {
@@ -169,4 +202,4 @@ class ClinicalDiagnosisManager:
             f"{len(context.tool_call_log)} tool calls: {context.tool_call_log}"
         )
 
-        return result.final_output, result, context
+        return final_output, result, context
