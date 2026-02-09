@@ -363,7 +363,7 @@ class ClinicalEvoTest:
     def load_baseline_from_trajectories(self, traj_dir):
         """Load existing episode-0 trajectory JSONs and re-score with current formula.
 
-        Looks for evo_ep0_{pathology}.json in traj_dir for each pathology.
+        Looks for {prefix}_ep0_{pathology}.json in traj_dir for each pathology.
         Returns (composite, per_metric, per_pathology, traj_paths) or None if files missing.
         """
         traj_dir = Path(traj_dir)
@@ -457,7 +457,7 @@ class ClinicalEvoTest:
                 return None
 
             if self.args.dry_run:
-                trajectory_paths.append(f"(dry-run) trajectories/evo_ep{episode_num}_{pathology}.json")
+                trajectory_paths.append(f"(dry-run) trajectories/{self._run_prefix}_ep{episode_num}_{pathology}.json")
                 continue
 
             # --- 3. Evaluate ---
@@ -1046,7 +1046,7 @@ def main():
     parser.add_argument(
         "--reuse-baseline", type=str, default=None,
         help="Path to directory with existing episode-0 trajectory JSONs "
-             "(evo_ep0_{pathology}.json). Skips re-running the agent for "
+             "({prefix}_ep0_{pathology}.json). Skips re-running the agent for "
              "episode 0 and re-scores with the current formula."
     )
     parser.add_argument(
