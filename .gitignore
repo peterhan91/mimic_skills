@@ -39,6 +39,8 @@ MIMIC-CDM-IV/*_hadm_info_first_diag.pkl
 codes_Hager/MIMIC-Clinical-Decision-Making-Analysis/
 codes_Hager/MIMIC-Clinical-Decision-Making-Dataset/
 data_splits/*/remaining.pkl
+data_splits/*/*_hadm_info_first_diag.pkl
+data_splits/*/*_hadm_info_first_diag.pkl.train_backup
 
 # EvoTest reference (forked, not part of this repo)
 EvoTest/
@@ -48,6 +50,10 @@ evotest-*.zip
 evotest_state/
 evotest_state_tot/
 evotest_state_sdk/
+evotest_state_old_no_guidelines/
+
+# Old experiment results
+results_old_no_guidelines/
 
 # Experiment intermediate outputs
 results/

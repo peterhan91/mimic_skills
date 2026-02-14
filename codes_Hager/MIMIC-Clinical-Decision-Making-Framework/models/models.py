@@ -570,6 +570,49 @@ class CustomLLM(LLM):
 
         return output.strip()
 
+    def generate_batch(
+        self,
+        prompt: str,
+        stop: List[str],
+        n: int,
+        temperature: float = 0.7,
+    ) -> List[str]:
+        """Generate n completions in a single request (vLLM) or n sequential calls (fallback).
+
+        vLLM's /v1/completions supports an `n` parameter that returns multiple
+        completions sharing the prompt KV cache — ~3.5x faster than n separate calls.
+        """
+        if self.vllm_base_url:
+            import requests
+            resp = requests.post(
+                f"{self.vllm_base_url}/completions",
+                json={
+                    "model": self.model_name,
+                    "prompt": prompt,
+                    "max_tokens": 1024,
+                    "temperature": temperature,
+                    "stop": STOP_WORDS + stop,
+                    "seed": None if temperature > 0 else self.seed,
+                    "n": n,
+                },
+                timeout=300,
+            )
+            resp.raise_for_status()
+            choices = resp.json()["choices"]
+            outputs = []
+            for choice in sorted(choices, key=lambda c: c["index"]):
+                text = choice["text"]
+                for stop_word in STOP_WORDS + stop:
+                    text = text.replace(stop_word, "")
+                outputs.append(text.strip())
+            return outputs
+
+        # Fallback: sequential calls for non-vLLM backends
+        return [
+            self.generate_with_temperature(prompt, stop=stop, temperature=temperature)
+            for _ in range(n)
+        ]
+
     @property
     def _identifying_params(self) -> Mapping[str, Any]:
         """Get the identifying parameters."""
