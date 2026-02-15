@@ -18,6 +18,8 @@ from agents.prompts import (
     DIAG_CRIT_TOOL_DESCR,
     TOOL_USE_EXAMPLES,
     DIAG_CRIT_TOOL_USE_EXAMPLE,
+    ASK_PATIENT_TOOL_DESCR,
+    ASK_PATIENT_TOOL_USE_EXAMPLE,
 )
 from agents.DiagnosisWorkflowParser import DiagnosisWorkflowParser
 from tools.Tools import (
@@ -252,6 +254,7 @@ def build_agent_executor_ZeroShot(
     skill_path=None,
     skill_inject="examples",
     annotate_clinical=False,
+    patient_simulator=None,
 ):
     with open(lab_test_mapping_path, "rb") as f:
         lab_test_mapping_df = pickle.load(f)
@@ -276,6 +279,12 @@ def build_agent_executor_ZeroShot(
         tools.append(ReadDiagnosticCriteria())
         add_tool_descr += DIAG_CRIT_TOOL_DESCR
         add_tool_use_examples += DIAG_CRIT_TOOL_USE_EXAMPLE
+
+    if patient_simulator:
+        from tools.patient_simulator import AskPatient
+        tools.append(AskPatient(simulator=patient_simulator))
+        add_tool_descr += ASK_PATIENT_TOOL_DESCR
+        add_tool_use_examples += ASK_PATIENT_TOOL_USE_EXAMPLE
 
     tool_names = [tool.name for tool in tools]
 

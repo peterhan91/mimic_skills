@@ -44,6 +44,15 @@ Patient History:
 
 DIAG_CRIT_TOOL_DESCR = "\nDiagnostic Criteria: Examine the diagnostic criteria for a specific pathology. The pathology must be specified in the 'Action Input' field."
 
+ASK_PATIENT_TOOL_DESCR = "\nAsk Patient: Ask the patient a question about their symptoms, medical history, medications, family history, or social habits. The question must be specified in the 'Action Input' field."
+
+ASK_PATIENT_TOOL_USE_EXAMPLE = """
+
+Thought: I need to gather more details about the patient's symptoms before examining them.
+Action: Ask Patient
+Action Input: Can you describe your pain? Where exactly is it, and when did it start?
+Observation: ..."""
+
 FULL_INFO_TEMPLATE_COT = """{system_tag_start}You are a medical artificial intelligence assistant. You diagnose patients based on the provided information to assist a doctor in his clinical duties. Your goal is to correctly diagnose the patient. Based on the provided information you will provide a final diagnosis of the most severe pathology. Consider the facts of the case first, step by step.{system_tag_end}{fewshot_examples}{user_tag_start}Consider the following case:
 
 {input}{diagnostic_criteria}\n\nWhat is the final diagnosis?{user_tag_end}{ai_tag_start}\nLets think step by step"""

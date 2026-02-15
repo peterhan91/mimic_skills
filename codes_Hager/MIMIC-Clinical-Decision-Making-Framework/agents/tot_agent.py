@@ -23,6 +23,8 @@ from agents.prompts import (
     DIAG_CRIT_TOOL_DESCR,
     DIAG_CRIT_TOOL_USE_EXAMPLE,
     TOOL_USE_EXAMPLES,
+    ASK_PATIENT_TOOL_DESCR,
+    ASK_PATIENT_TOOL_USE_EXAMPLE,
 )
 from agents.tot_prompts import TOT_EVALUATION_PROMPT
 from tools.Tools import (
@@ -41,6 +43,7 @@ class ToTState:
 
     intermediate_steps: List[Tuple[AgentAction, str]] = field(default_factory=list)
     imaging_state: Dict = field(default_factory=dict)
+    patient_sim_history: List[Tuple[str, str]] = field(default_factory=list)
     depth: int = 0
     value: float = 0.0
     finished: bool = False
@@ -88,6 +91,7 @@ class TreeOfThoughtsRunner:
         max_depth: int = 10,
         temperature: float = 0.7,
         eval_temperature: float = 0.0,
+        patient_simulator=None,
     ):
         self.llm = llm
         self.prompt = prompt
@@ -102,6 +106,7 @@ class TreeOfThoughtsRunner:
         self.max_depth = max_depth
         self.temperature = temperature
         self.eval_temperature = eval_temperature
+        self.patient_simulator = patient_simulator
         self.cache = ToolResultCache()
 
     # ── public interface (matches AgentExecutor.__call__) ────────────
@@ -194,6 +199,7 @@ class TreeOfThoughtsRunner:
                 ns = ToTState(
                     intermediate_steps=list(state.intermediate_steps),
                     imaging_state=copy.deepcopy(state.imaging_state),
+                    patient_sim_history=list(state.patient_sim_history),
                     depth=state.depth + 1,
                     finished=True,
                     prediction=parsed.return_values.get("output", raw_output),
@@ -209,14 +215,15 @@ class TreeOfThoughtsRunner:
                     continue
                 seen_actions.add(dedup_key)
 
-                observation, new_imaging_state = self._execute_tool(
-                    action, state.imaging_state
+                observation, new_imaging_state, new_sim_history = self._execute_tool(
+                    action, state.imaging_state, state.patient_sim_history
                 )
 
                 ns = ToTState(
                     intermediate_steps=list(state.intermediate_steps)
                     + [(action, observation)],
                     imaging_state=new_imaging_state,
+                    patient_sim_history=new_sim_history or list(state.patient_sim_history),
                     depth=state.depth + 1,
                 )
                 new_states.append(ns)
@@ -259,35 +266,45 @@ class TreeOfThoughtsRunner:
     # ── TOOL EXECUTION ──────────────────────────────────────────────
 
     def _execute_tool(
-        self, action: AgentAction, imaging_state: Dict
-    ) -> Tuple[str, Dict]:
+        self,
+        action: AgentAction,
+        imaging_state: Dict,
+        patient_sim_history: Optional[List] = None,
+    ) -> Tuple[str, Dict, Optional[List]]:
         """Execute a tool, using cache for deterministic tools.
 
         Returns:
-            (observation, new_imaging_state): The new_imaging_state reflects
-            the actual mutations made by retrieve_imaging (only incremented
-            when a scan is successfully returned, not on repeats or misses).
+            (observation, new_imaging_state, new_patient_sim_history)
         """
         tool_name = action.tool
         tool_input = action.tool_input
+        sim_history = patient_sim_history
 
-        # Check cache for deterministic tools
-        if tool_name != "Imaging":
+        # Check cache for deterministic tools (Ask Patient is keyed by
+        # question + history, so identical contexts hit cache)
+        if tool_name not in ("Imaging", "Ask Patient"):
             cached = self.cache.get(tool_name, tool_input)
             if cached is not None:
-                return cached, imaging_state
+                return cached, imaging_state, sim_history
+
+        # Cache Ask Patient by (question, history_tuple) for determinism
+        if tool_name == "Ask Patient" and self.patient_simulator:
+            history = list(sim_history or [])
+            cache_key = (str(tool_input), tuple(history))
+            cached = self.cache.get(tool_name, cache_key)
+            if cached is not None:
+                new_history = history + [(tool_input if isinstance(tool_input, str) else tool_input.get("action_input", str(tool_input)), cached)]
+                return cached, imaging_state, new_history
 
         if tool_name not in self.tools:
             return (
                 f"Invalid tool: {tool_name}. Use one of: {list(self.tools.keys())}",
                 imaging_state,
+                sim_history,
             )
 
         tool = self.tools[tool_name]
 
-        # For Imaging, create a fresh instance with this branch's state.
-        # retrieve_imaging mutates already_requested_scans only on success,
-        # so we capture the post-execution state from the branch tool.
         try:
             if tool_name == "Imaging":
                 branch_state = copy.deepcopy(imaging_state)
@@ -296,14 +313,25 @@ class TreeOfThoughtsRunner:
                     already_requested_scans=branch_state,
                 )
                 result = branch_tool._run(**tool_input)
-                return result, branch_tool.already_requested_scans
+                return result, branch_tool.already_requested_scans, sim_history
+            elif tool_name == "Ask Patient" and self.patient_simulator:
+                # Branch-aware: use explicit history, not tool's internal state
+                history = list(sim_history or [])
+                question = tool_input if isinstance(tool_input, str) else tool_input.get("action_input", str(tool_input))
+                result = self.patient_simulator.respond(
+                    question=question, history=history
+                )
+                cache_key = (str(tool_input), tuple(history))
+                self.cache.put(tool_name, cache_key, result)
+                new_history = history + [(question, result)]
+                return result, imaging_state, new_history
             else:
                 result = tool._run(**tool_input)
                 self.cache.put(tool_name, tool_input, result)
-                return result, imaging_state
+                return result, imaging_state, sim_history
         except Exception as e:
             logger.warning(f"[ToT] Tool {tool_name} raised {type(e).__name__}: {e}")
-            return f"Tool error: {e}", imaging_state
+            return f"Tool error: {e}", imaging_state, sim_history
 
     # ── SCRATCHPAD FORMATTING ───────────────────────────────────────
 
@@ -367,6 +395,7 @@ class TreeOfThoughtsRunner:
         return ToTState(
             intermediate_steps=list(state.intermediate_steps),
             imaging_state=copy.deepcopy(state.imaging_state),
+            patient_sim_history=list(state.patient_sim_history),
             depth=state.depth,
             finished=True,
             prediction=prediction,
@@ -393,6 +422,7 @@ def build_tot_runner(
     skill_path=None,
     skill_inject="examples",
     annotate_clinical=False,
+    patient_simulator=None,
     # ToT-specific params
     tot_n_generate=10,
     tot_breadth=3,
@@ -423,6 +453,12 @@ def build_tot_runner(
         tools_list.append(ReadDiagnosticCriteria())
         add_tool_descr += DIAG_CRIT_TOOL_DESCR
         add_tool_use_examples += DIAG_CRIT_TOOL_USE_EXAMPLE
+
+    if patient_simulator:
+        from tools.patient_simulator import AskPatient
+        tools_list.append(AskPatient(simulator=patient_simulator))
+        add_tool_descr += ASK_PATIENT_TOOL_DESCR
+        add_tool_use_examples += ASK_PATIENT_TOOL_USE_EXAMPLE
 
     tool_names = [tool.name for tool in tools_list]
     tools_dict = {tool.name: tool for tool in tools_list}
@@ -507,4 +543,5 @@ def build_tot_runner(
         max_depth=tot_max_depth,
         temperature=tot_temperature,
         eval_temperature=tot_eval_temperature,
+        patient_simulator=patient_simulator,
     )

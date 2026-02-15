@@ -105,6 +105,8 @@ def run(args: DictConfig):
         run_name += "_NOSUMMARY"
     if args.get("annotate_clinical"):
         run_name += "_CLANNOT"
+    if args.get("patient_simulator"):
+        run_name += "_PATSIM"
     if args.get("skill_path"):
         skill_name = os.path.basename(args.skill_path).replace(".md", "")
         run_name += f"_SKILL_{skill_name}"
@@ -137,6 +139,25 @@ def run(args: DictConfig):
 
         logger.info(f"[{patient_num}/{total_patients}] Processing patient: {_id}")
 
+        # Patient simulator: if enabled, give only chief complaint as input
+        # and let the agent gather history via the Ask Patient tool.
+        patient_sim = None
+        if args.get("patient_simulator"):
+            from tools.patient_simulator import PatientSimulator, extract_chief_complaint
+            patient_sim = PatientSimulator(
+                patient_history=hadm_info_clean[_id]["Patient History"],
+                llm=llm,
+                tags=tags,
+            )
+            patient_input = extract_chief_complaint(
+                hadm_info_clean[_id]["Patient History"]
+            )
+            logger.info(
+                f"  [patient_simulator] Chief complaint: {patient_input[:80]}..."
+            )
+        else:
+            patient_input = hadm_info_clean[_id]["Patient History"].strip()
+
         # Build
         if args.agent == "ToT":
             runner = build_tot_runner(
@@ -155,15 +176,14 @@ def run(args: DictConfig):
                 skill_path=args.get("skill_path", None),
                 skill_inject=args.get("skill_inject", "examples"),
                 annotate_clinical=args.get("annotate_clinical", False),
+                patient_simulator=patient_sim,
                 tot_n_generate=args.get("tot_n_generate", 3),
                 tot_breadth=args.get("tot_breadth", 2),
                 tot_max_depth=args.get("tot_max_depth", 10),
                 tot_temperature=args.get("tot_temperature", 0.7),
                 tot_eval_temperature=args.get("tot_eval_temperature", 0.0),
             )
-            result = runner(
-                {"input": hadm_info_clean[_id]["Patient History"].strip()}
-            )
+            result = runner({"input": patient_input})
         else:
             agent_executor = build_agent_executor_ZeroShot(
                 patient=hadm_info_clean[_id],
@@ -181,10 +201,9 @@ def run(args: DictConfig):
                 skill_path=args.get("skill_path", None),
                 skill_inject=args.get("skill_inject", "examples"),
                 annotate_clinical=args.get("annotate_clinical", False),
+                patient_simulator=patient_sim,
             )
-            result = agent_executor(
-                {"input": hadm_info_clean[_id]["Patient History"].strip()}
-            )
+            result = agent_executor({"input": patient_input})
         append_to_pickle_file(results_log_path, {_id: result})
 
 

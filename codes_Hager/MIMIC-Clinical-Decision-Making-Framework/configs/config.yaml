@@ -33,6 +33,7 @@ confirm_diagnosis: False
 save_probabilities: False
 
 annotate_clinical: False
+patient_simulator: False
 
 vllm_base_url:
 
