@@ -4,9 +4,9 @@ set -euo pipefail
 # ============================================================
 # evotest_test.sh — Evaluate best skill on test set (100 patients)
 #
-# Swaps data_splits/{path}/{path}_hadm_info_first_diag.pkl to
-# point at test.pkl (100 patients) instead of train.pkl (10),
-# runs baseline + best skill, evaluates, and compares.
+# Uses data_file= to point run.py directly at test.pkl without
+# modifying the shared _hadm_info_first_diag.pkl file (safe to
+# run concurrently with training).
 #
 # Usage:
 #   bash scripts/evotest_test.sh [--patient-sim] <BEST_SKILL_PATH> [MODEL] [ANNOTATE_CLINICAL]
@@ -17,12 +17,9 @@ set -euo pipefail
 #   bash scripts/evotest_test.sh --patient-sim skills/evo/episode_5.md vLLM_Qwen3 True
 #
 # The script will:
-#   1. Back up current _hadm_info_first_diag.pkl (train) files
-#   2. Copy test.pkl as _hadm_info_first_diag.pkl
-#   3. Run baseline (no skill) on all 4 pathologies
-#   4. Run with best skill on all 4 pathologies
-#   5. Evaluate + extract trajectories + compare
-#   6. Restore original train.pkl pointers
+#   1. Run baseline (no skill) on all 7 pathologies (100 patients each)
+#   2. Run with best skill on all 7 pathologies
+#   3. Evaluate + extract trajectories + compare
 #
 # Requires vLLM to be running if using a vLLM_* model.
 # ============================================================
@@ -88,29 +85,7 @@ phase_end() {
 die() {
     echo ""
     echo "ERROR: $1" >&2
-    # Restore train.pkl before exiting on error
-    restore_train_data
     exit 1
-}
-
-restore_train_data() {
-    echo ""
-    echo "Restoring train.pkl as _hadm_info_first_diag.pkl..."
-    for P in "${PATHOLOGIES[@]}"; do
-        BACKUP="$DATA_DIR/$P/${P}_hadm_info_first_diag.pkl.train_backup"
-        TARGET="$DATA_DIR/$P/${P}_hadm_info_first_diag.pkl"
-        if [ -f "$BACKUP" ]; then
-            cp "$BACKUP" "$TARGET"
-            rm "$BACKUP"
-            echo "  Restored $P (from backup)"
-        else
-            # Fallback: copy train.pkl
-            if [ -f "$DATA_DIR/$P/train.pkl" ]; then
-                cp "$DATA_DIR/$P/train.pkl" "$TARGET"
-                echo "  Restored $P (from train.pkl)"
-            fi
-        fi
-    done
 }
 
 # ============================================================
@@ -164,32 +139,9 @@ echo "  All prerequisites OK"
 phase_end
 
 # ============================================================
-# PHASE 1: Swap data to test set (100 patients)
+# PHASE 1: Baseline run (no skill, test set)
 # ============================================================
-phase_start 1 "Swap data to test set (100 patients per pathology)"
-
-for P in "${PATHOLOGIES[@]}"; do
-    TARGET="$DATA_DIR/$P/${P}_hadm_info_first_diag.pkl"
-    BACKUP="$DATA_DIR/$P/${P}_hadm_info_first_diag.pkl.train_backup"
-    TEST_DATA="$DATA_DIR/$P/test.pkl"
-
-    # Back up current (train) data
-    if [ -f "$TARGET" ]; then
-        cp "$TARGET" "$BACKUP"
-        echo "  Backed up $P train data"
-    fi
-
-    # Copy test.pkl as the framework-expected filename
-    cp "$TEST_DATA" "$TARGET"
-    echo "  Swapped $P -> test.pkl ($(wc -c < "$TEST_DATA" | tr -d ' ') bytes)"
-done
-
-phase_end
-
-# ============================================================
-# PHASE 2: Baseline run (no skill, test set)
-# ============================================================
-phase_start 2 "Baseline run (no skill, test set, all pathologies)"
+phase_start 1 "Baseline run (no skill, test set, all pathologies)"
 
 declare -A BASELINE_RUN_DIRS
 BASELINE_DESCR="_${TEST_PREFIX}_baseline_test100"
@@ -204,6 +156,7 @@ for P in "${PATHOLOGIES[@]}"; do
         pathology="$P"
         model="$MODEL"
         agent="$AGENT"
+        data_file="$DATA_DIR/$P/test.pkl"
         base_mimic="$DATA_DIR/$P"
         base_models="$BASE_MODELS"
         lab_test_mapping_path="$LAB_TEST_MAPPING"
@@ -226,9 +179,9 @@ done
 phase_end
 
 # ============================================================
-# PHASE 3: Evaluate baseline + extract trajectories
+# PHASE 2: Evaluate baseline + extract trajectories
 # ============================================================
-phase_start 3 "Evaluate baseline runs"
+phase_start 2 "Evaluate baseline runs"
 
 for P in "${PATHOLOGIES[@]}"; do
     PATIENT_DATA="$DATA_DIR/$P/test.pkl"
@@ -254,9 +207,9 @@ done
 phase_end
 
 # ============================================================
-# PHASE 4: Best skill run (test set)
+# PHASE 3: Best skill run (test set)
 # ============================================================
-phase_start 4 "Best skill run (test set, all pathologies)"
+phase_start 3 "Best skill run (test set, all pathologies)"
 
 declare -A SKILL_RUN_DIRS
 SKILL_DESCR="_${TEST_PREFIX}_evotest_best_test100"
@@ -271,6 +224,7 @@ for P in "${PATHOLOGIES[@]}"; do
         pathology="$P"
         model="$MODEL"
         agent="$AGENT"
+        data_file="$DATA_DIR/$P/test.pkl"
         base_mimic="$DATA_DIR/$P"
         base_models="$BASE_MODELS"
         lab_test_mapping_path="$LAB_TEST_MAPPING"
@@ -294,9 +248,9 @@ done
 phase_end
 
 # ============================================================
-# PHASE 5: Evaluate skill runs + extract + compare
+# PHASE 4: Evaluate skill runs + extract + compare
 # ============================================================
-phase_start 5 "Evaluate skill runs and compare"
+phase_start 4 "Evaluate skill runs and compare"
 
 for P in "${PATHOLOGIES[@]}"; do
     PATIENT_DATA="$DATA_DIR/$P/test.pkl"
@@ -331,14 +285,7 @@ done
 phase_end
 
 # ============================================================
-# PHASE 6: Restore train data
-# ============================================================
-phase_start 6 "Restore train data"
-restore_train_data
-phase_end
-
-# ============================================================
-# PHASE 7: Final Summary
+# PHASE 5: Final Summary
 # ============================================================
 TOTAL_ELAPSED=$SECONDS
 TOTAL_HR=$((TOTAL_ELAPSED / 3600))

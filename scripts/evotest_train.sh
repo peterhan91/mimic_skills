@@ -270,16 +270,10 @@ echo "    - Review best skill: cat $SKILLS_DIR/episode_<N>.md"
 PATSIM_HINT=""
 if [ "$PATIENT_SIMULATOR" = "True" ]; then PATSIM_HINT="--patient-sim "; fi
 echo "    - Continue evolving: bash scripts/evotest_train.sh --resume ${PATSIM_HINT}$((EPISODES + 5))"
+AGENT_HINT=""
+if [ "$AGENT" != "ZeroShot" ]; then AGENT_HINT="--agent $AGENT "; fi
 echo "    - Run final eval on test set (100 patients per pathology):"
-echo "      BEST_SKILL=$SKILLS_DIR/episode_<N>.md"
-echo "      for P in appendicitis cholecystitis diverticulitis pancreatitis; do"
-echo "        cp data_splits/\$P/test.pkl data_splits/\$P/\${P}_hadm_info_first_diag.pkl"
-echo "        cd codes_Hager/MIMIC-Clinical-Decision-Making-Framework"
-echo "        python run.py pathology=\$P model=$MODEL summarize=True \\"
-echo "          annotate_clinical=$ANNOTATE_CLINICAL skill_path=../../\$BEST_SKILL \\"
-echo "          run_descr=_evotest_best_test100"
-echo "        cd ../.."
-echo "      done"
+echo "      bash scripts/evotest_test.sh ${AGENT_HINT}${PATSIM_HINT}$SKILLS_DIR/episode_<N>.md $MODEL $ANNOTATE_CLINICAL"
 echo "============================================================"
 
 exit $EVOTEST_EXIT

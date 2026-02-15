@@ -37,6 +37,8 @@ patient_simulator: False
 
 vllm_base_url:
 
+data_file:
+
 skill_path:
 skill_inject: examples
 

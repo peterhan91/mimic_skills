@@ -1,5 +1,6 @@
 import os
 from os.path import join
+import pickle
 import random
 from datetime import datetime
 import time
@@ -57,9 +58,13 @@ def run(args: DictConfig):
         np.random.seed(args.seed)
 
     # Load patient data
-    hadm_info_clean = load_hadm_from_file(
-        f"{args.pathology}_hadm_info_first_diag", base_mimic=args.base_mimic
-    )
+    if args.get("data_file"):
+        with open(args.data_file, "rb") as f:
+            hadm_info_clean = pickle.load(f)
+    else:
+        hadm_info_clean = load_hadm_from_file(
+            f"{args.pathology}_hadm_info_first_diag", base_mimic=args.base_mimic
+        )
 
     tags = {
         "system_tag_start": args.system_tag_start,
