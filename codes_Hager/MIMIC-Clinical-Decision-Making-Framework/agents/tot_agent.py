@@ -185,14 +185,12 @@ class TreeOfThoughtsRunner:
         seen_actions: set = set()
         new_states: List[ToTState] = []
 
-        raw_outputs = self.llm.generate_batch(
-            prompt_text,
-            stop=self.stop_words,
-            n=self.n_generate,
-            temperature=self.temperature,
-        )
-
-        for raw_output in raw_outputs:
+        for _ in range(self.n_generate):
+            raw_output = self.llm.generate_with_temperature(
+                prompt_text,
+                stop=self.stop_words,
+                temperature=self.temperature,
+            )
             parsed = self.parser.parse(raw_output)
 
             if isinstance(parsed, AgentFinish):
