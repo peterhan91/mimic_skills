@@ -195,7 +195,8 @@ def build_aggregate_table(all_data):
     return "\n".join(lines)
 
 
-def build_evolver_prompt(all_data, all_failures, prev_skill=None, guidelines_context=None):
+def build_evolver_prompt(all_data, all_failures, prev_skill=None, guidelines_context=None,
+                         patient_simulator=False):
     """Construct the full Evolver prompt from multiple pathologies."""
     pathologies = [d["pathology"] for d in all_data]
     total_n = sum(d["n_patients"] for d in all_data)
@@ -249,13 +250,29 @@ Use these to ground your skill in evidence-based diagnostic and treatment protoc
 
 """
 
+    patient_sim_section = ""
+    if patient_simulator:
+        patient_sim_section = """## Patient Simulator Mode (ACTIVE)
+
+The agent operates in **patient simulator mode**: it receives ONLY a brief chief complaint (e.g., "___ presents with 4 days of RLQ pain.") instead of the full Patient History. It must actively gather history by calling the **"Ask Patient"** tool to ask questions.
+
+The agent has these tools: `Physical Examination`, `Laboratory Tests`, `Imaging`, `Ask Patient`
+
+**Key constraints:**
+- The agent does NOT know PMH, medications, social history, or family history at the start
+- It must ask targeted questions via "Ask Patient" to gather this information
+- Efficient questioning is critical — each Ask Patient call uses a turn (max 10 rounds total)
+- The patient responds naturally (may be vague, uses lay terms, does not volunteer diagnoses)
+
+"""
+
     prompt = f"""You are a clinical AI system optimizer. Your task is to analyze diagnostic agent trajectories and real discharge summaries from {total_n} patients across {len(pathologies)} pathologies ({pathology_str}), then generate an improved clinical reasoning skill.
 
 ## Current Agent Performance
 
 {build_aggregate_table(all_data)}
 
-{prev_skill_section}{guidelines_section}## Failed Trajectories with Gap Analysis
+{prev_skill_section}{guidelines_section}{patient_sim_section}## Failed Trajectories with Gap Analysis
 
 Below are patients where the agent failed across different pathologies. For each, you see:
 1. What the agent did (its trajectory)
@@ -280,7 +297,14 @@ The skill should be written as markdown with clear step-by-step instructions tha
 - How to select labs based on exam findings (not shotgun ordering)
 - How to choose imaging modality based on suspected pathology location
 - When to recommend surgical vs conservative treatment
-- How to interpret lab values in context (normal labs don't rule out surgical conditions)
+- How to interpret lab values in context (normal labs don't rule out surgical conditions)"""
+
+    if patient_simulator:
+        prompt += """
+- **How to efficiently gather patient history via "Ask Patient"** — what to ask first (pain characterization, PMH, medications, social habits), how to combine questions, when to stop asking and move to examination
+- **The skill MUST mention "Ask Patient" as an available tool** and teach the agent to use it before or alongside Physical Examination"""
+
+    prompt += """
 
 Output ONLY the skill content in markdown format. Do not include any preamble or explanation outside the skill itself."""
 
@@ -301,7 +325,7 @@ def call_anthropic(prompt, model):
 
 
 def evolve_skill(trajectories_paths, model, output_path, prev_skill_path=None,
-                  guidelines_dir=None, dry_run=False):
+                  guidelines_dir=None, dry_run=False, patient_simulator=False):
     """Full evolution pipeline: load -> analyze -> generate -> save."""
     # Load all trajectory files
     all_data = []
@@ -343,7 +367,8 @@ def evolve_skill(trajectories_paths, model, output_path, prev_skill_path=None,
             print(f"Loaded clinical guidelines ({len(guidelines_context)} chars) from {gdir}")
 
     prompt = build_evolver_prompt(all_data, all_failures, prev_skill=prev_skill,
-                                  guidelines_context=guidelines_context)
+                                  guidelines_context=guidelines_context,
+                                  patient_simulator=patient_simulator)
 
     if dry_run:
         print(f"\n{'='*60}")
@@ -398,6 +423,10 @@ def main():
         help="Disable clinical guidelines injection"
     )
     parser.add_argument(
+        "--patient-simulator", action="store_true",
+        help="Enable patient simulator mode in Evolver prompt (teaches Ask Patient usage)"
+    )
+    parser.add_argument(
         "--dry-run", action="store_true",
         help="Print the Evolver prompt without calling the API"
     )
@@ -411,7 +440,8 @@ def main():
     evolve_skill(args.trajectories, args.model, args.output,
                  prev_skill_path=args.prev_skill,
                  guidelines_dir=guidelines_dir,
-                 dry_run=args.dry_run)
+                 dry_run=args.dry_run,
+                 patient_simulator=args.patient_simulator)
 
 
 if __name__ == "__main__":

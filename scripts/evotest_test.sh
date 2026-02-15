@@ -9,11 +9,12 @@ set -euo pipefail
 # runs baseline + best skill, evaluates, and compares.
 #
 # Usage:
-#   bash scripts/evotest_test.sh <BEST_SKILL_PATH> [MODEL] [ANNOTATE_CLINICAL]
+#   bash scripts/evotest_test.sh [--patient-sim] <BEST_SKILL_PATH> [MODEL] [ANNOTATE_CLINICAL]
 #
 # Examples:
 #   bash scripts/evotest_test.sh skills/evo/episode_5.md
 #   bash scripts/evotest_test.sh skills/evo/episode_5.md vLLM_Qwen3 True
+#   bash scripts/evotest_test.sh --patient-sim skills/evo/episode_5.md vLLM_Qwen3 True
 #
 # The script will:
 #   1. Back up current _hadm_info_first_diag.pkl (train) files
@@ -27,12 +28,18 @@ set -euo pipefail
 # ============================================================
 
 AGENT="ZeroShot"
-if [ "${1:-}" = "--agent" ]; then
-    AGENT="${2:?--agent requires a value (ZeroShot or ToT)}"
-    shift 2
-fi
+PATIENT_SIMULATOR="False"
+while [ "${1:-}" = "--agent" ] || [ "${1:-}" = "--patient-sim" ]; do
+    if [ "$1" = "--agent" ]; then
+        AGENT="${2:?--agent requires a value (ZeroShot or ToT)}"
+        shift 2
+    elif [ "$1" = "--patient-sim" ]; then
+        PATIENT_SIMULATOR="True"
+        shift
+    fi
+done
 
-BEST_SKILL="${1:?Usage: $0 [--agent ToT] <BEST_SKILL_PATH> [MODEL] [ANNOTATE_CLINICAL]}"
+BEST_SKILL="${1:?Usage: $0 [--agent ToT] [--patient-sim] <BEST_SKILL_PATH> [MODEL] [ANNOTATE_CLINICAL]}"
 MODEL="${2:-vLLM_Qwen3}"
 ANNOTATE_CLINICAL="${3:-True}"
 
@@ -49,6 +56,17 @@ LOG_FILE="$LOG_DIR/test_eval_${TIMESTAMP}.log"
 BASE_MODELS="${HF_HOME:-${HOME}/.cache/huggingface/hub}"
 LAB_TEST_MAPPING="$PROJECT_DIR/MIMIC-CDM-IV/lab_test_mapping.pkl"
 PATHOLOGIES=("appendicitis" "cholecystitis" "diverticulitis" "pancreatitis" "cholangitis" "bowel_obstruction" "pyelonephritis")
+
+# Experiment prefix for trajectories/comparisons (prevents cross-experiment overwrites)
+if [ "$AGENT" = "ToT" ] && [ "$PATIENT_SIMULATOR" = "True" ]; then
+    TEST_PREFIX="totps"
+elif [ "$AGENT" = "ToT" ]; then
+    TEST_PREFIX="tot"
+elif [ "$PATIENT_SIMULATOR" = "True" ]; then
+    TEST_PREFIX="evops"
+else
+    TEST_PREFIX="evo"
+fi
 
 # ============================================================
 # Helpers
@@ -114,6 +132,7 @@ echo "Test evaluation configuration:"
 echo "  BEST_SKILL:        $BEST_SKILL"
 echo "  MODEL:             $MODEL"
 echo "  ANNOTATE_CLINICAL: $ANNOTATE_CLINICAL"
+echo "  PATIENT_SIMULATOR: $PATIENT_SIMULATOR"
 echo "  PATHOLOGIES:       ${PATHOLOGIES[*]}"
 echo "  LOG_FILE:          $LOG_FILE"
 echo ""
@@ -173,25 +192,30 @@ phase_end
 phase_start 2 "Baseline run (no skill, test set, all pathologies)"
 
 declare -A BASELINE_RUN_DIRS
-BASELINE_DESCR="_baseline_test100"
+BASELINE_DESCR="_${TEST_PREFIX}_baseline_test100"
 
 for P in "${PATHOLOGIES[@]}"; do
     echo ""
     echo "--- Baseline: $P (100 patients) ---"
 
     cd "$FRAMEWORK_DIR"
-    python run.py \
-        pathology="$P" \
-        model="$MODEL" \
-        agent="$AGENT" \
-        base_mimic="$DATA_DIR/$P" \
-        base_models="$BASE_MODELS" \
-        lab_test_mapping_path="$LAB_TEST_MAPPING" \
-        local_logging_dir="$RESULTS_DIR" \
-        summarize=True \
-        annotate_clinical="$ANNOTATE_CLINICAL" \
-        run_descr="$BASELINE_DESCR" \
-        || die "Baseline run failed for $P"
+    BASELINE_CMD=(
+        python run.py
+        pathology="$P"
+        model="$MODEL"
+        agent="$AGENT"
+        base_mimic="$DATA_DIR/$P"
+        base_models="$BASE_MODELS"
+        lab_test_mapping_path="$LAB_TEST_MAPPING"
+        local_logging_dir="$RESULTS_DIR"
+        summarize=True
+        annotate_clinical="$ANNOTATE_CLINICAL"
+        run_descr="$BASELINE_DESCR"
+    )
+    if [ "$PATIENT_SIMULATOR" = "True" ]; then
+        BASELINE_CMD+=(patient_simulator=True)
+    fi
+    "${BASELINE_CMD[@]}" || die "Baseline run failed for $P"
 
     BASELINE_RUN_DIR=$(ls -td "$RESULTS_DIR"/*"$P"*"$BASELINE_DESCR"* 2>/dev/null | head -1)
     [ -n "$BASELINE_RUN_DIR" ] || die "Could not find baseline results for $P"
@@ -208,7 +232,7 @@ phase_start 3 "Evaluate baseline runs"
 
 for P in "${PATHOLOGIES[@]}"; do
     PATIENT_DATA="$DATA_DIR/$P/test.pkl"
-    BASELINE_TRAJ="$TRAJ_DIR/baseline_${P}_test100.json"
+    BASELINE_TRAJ="$TRAJ_DIR/${TEST_PREFIX}_baseline_${P}_test100.json"
 
     echo ""
     echo "--- Evaluate baseline: $P ---"
@@ -235,26 +259,31 @@ phase_end
 phase_start 4 "Best skill run (test set, all pathologies)"
 
 declare -A SKILL_RUN_DIRS
-SKILL_DESCR="_evotest_best_test100"
+SKILL_DESCR="_${TEST_PREFIX}_evotest_best_test100"
 
 for P in "${PATHOLOGIES[@]}"; do
     echo ""
     echo "--- Best skill: $P (100 patients) ---"
 
     cd "$FRAMEWORK_DIR"
-    python run.py \
-        pathology="$P" \
-        model="$MODEL" \
-        agent="$AGENT" \
-        base_mimic="$DATA_DIR/$P" \
-        base_models="$BASE_MODELS" \
-        lab_test_mapping_path="$LAB_TEST_MAPPING" \
-        local_logging_dir="$RESULTS_DIR" \
-        summarize=True \
-        annotate_clinical="$ANNOTATE_CLINICAL" \
-        skill_path="$BEST_SKILL" \
-        run_descr="$SKILL_DESCR" \
-        || die "Skill run failed for $P"
+    SKILL_CMD=(
+        python run.py
+        pathology="$P"
+        model="$MODEL"
+        agent="$AGENT"
+        base_mimic="$DATA_DIR/$P"
+        base_models="$BASE_MODELS"
+        lab_test_mapping_path="$LAB_TEST_MAPPING"
+        local_logging_dir="$RESULTS_DIR"
+        summarize=True
+        annotate_clinical="$ANNOTATE_CLINICAL"
+        skill_path="$BEST_SKILL"
+        run_descr="$SKILL_DESCR"
+    )
+    if [ "$PATIENT_SIMULATOR" = "True" ]; then
+        SKILL_CMD+=(patient_simulator=True)
+    fi
+    "${SKILL_CMD[@]}" || die "Skill run failed for $P"
 
     SKILL_RUN_DIR=$(ls -td "$RESULTS_DIR"/*"$P"*"$SKILL_DESCR"* 2>/dev/null | head -1)
     [ -n "$SKILL_RUN_DIR" ] || die "Could not find skill results for $P"
@@ -271,9 +300,9 @@ phase_start 5 "Evaluate skill runs and compare"
 
 for P in "${PATHOLOGIES[@]}"; do
     PATIENT_DATA="$DATA_DIR/$P/test.pkl"
-    BASELINE_TRAJ="$TRAJ_DIR/baseline_${P}_test100.json"
-    SKILL_TRAJ="$TRAJ_DIR/evotest_best_${P}_test100.json"
-    COMPARISON="$COMP_DIR/evotest_best_vs_baseline_${P}_test100.md"
+    BASELINE_TRAJ="$TRAJ_DIR/${TEST_PREFIX}_baseline_${P}_test100.json"
+    SKILL_TRAJ="$TRAJ_DIR/${TEST_PREFIX}_evotest_best_${P}_test100.json"
+    COMPARISON="$COMP_DIR/${TEST_PREFIX}_evotest_best_vs_baseline_${P}_test100.md"
 
     echo ""
     echo "--- Evaluate skill: $P ---"
@@ -336,7 +365,7 @@ echo "  ------------------------------------------------------------------------
 echo ""
 echo "  Comparisons:"
 for P in "${PATHOLOGIES[@]}"; do
-    COMPARISON="$COMP_DIR/evotest_best_vs_baseline_${P}_test100.md"
+    COMPARISON="$COMP_DIR/${TEST_PREFIX}_evotest_best_vs_baseline_${P}_test100.md"
     if [ -f "$COMPARISON" ]; then
         echo ""
         echo "  [$P]"
@@ -347,7 +376,7 @@ done
 echo ""
 echo "  Full comparison reports:"
 for P in "${PATHOLOGIES[@]}"; do
-    echo "    cat $COMP_DIR/evotest_best_vs_baseline_${P}_test100.md"
+    echo "    cat $COMP_DIR/${TEST_PREFIX}_evotest_best_vs_baseline_${P}_test100.md"
 done
 echo ""
 echo "  Log: $LOG_FILE"

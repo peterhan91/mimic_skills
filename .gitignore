@@ -49,6 +49,8 @@ evotest-*.zip
 # EvoTest state (checkpoint files)
 evotest_state/
 evotest_state_tot/
+evotest_state_patsim/
+evotest_state_tot_patsim/
 evotest_state_sdk/
 evotest_state_old_no_guidelines/
 

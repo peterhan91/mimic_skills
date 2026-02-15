@@ -287,6 +287,12 @@ python scripts/evotest_clinical.py \
     --model Qwen3_30B_A3B \
     --evolver-model claude-opus-4-6 \
     --annotate-clinical True
+
+# With patient simulator (agent receives chief complaint only, must Ask Patient)
+python scripts/evotest_clinical.py \
+    --episodes 10 \
+    --model Qwen3_30B_A3B \
+    --patient-simulator True
 ```
 
 Each episode takes ~20-40 min on GPU (40 patients), so 10 episodes = ~3-7 hours.
@@ -306,11 +312,14 @@ python scripts/evotest_clinical.py \
 
 ### Resuming After Interruption
 
-State is saved to `evotest_state/state.json` after every episode. Resume from
-where you left off:
+State is saved to the experiment's state directory after every episode. Resume
+from where you left off:
 
 ```bash
 python scripts/evotest_clinical.py --resume --episodes 15
+
+# Resume a patient-sim experiment (state in evotest_state_patsim/)
+python scripts/evotest_clinical.py --resume --episodes 15 --patient-simulator True
 ```
 
 ### Recommended Settings
@@ -335,6 +344,8 @@ python scripts/evotest_clinical.py --help
 --model NAME           Agent model (default: Qwen3_30B_A3B)
 --evolver-model NAME   Anthropic model for Evolver (default: claude-opus-4-6)
 --annotate-clinical    Enable clinical lab annotations (default: True)
+--patient-simulator    Enable patient simulator mode (default: False)
+--agent NAME           Agent type: ZeroShot or ToT (default: ZeroShot)
 --exploration-constant UCB exploration constant c (default: 1.0)
 --depth-constant       UCB depth decay alpha (default: 0.8)
 --drop-threshold       Force-best-after-drop threshold (default: 1.0)
@@ -342,7 +353,7 @@ python scripts/evotest_clinical.py --help
 --initial-skill PATH   Seed skill for episode 0 (optional)
 --guidelines-dir DIR   Path to guidelines/ directory (default: auto-detect)
 --no-guidelines        Disable clinical guidelines in Evolver prompt
---resume               Resume from evotest_state/state.json
+--resume               Resume from state.json (auto-selects correct state dir)
 --dry-run              Print commands without executing
 ```
 
@@ -357,56 +368,63 @@ python scripts/evotest_clinical.py --help
 
 ### Output Files
 
+Each experiment config (agent × patient-sim) gets its own isolated directories:
+
+| Config | State Dir | Skills Dir | Trajectory Prefix |
+|---|---|---|---|
+| ZeroShot | `evotest_state/` | `skills/evo/` | `evo` |
+| ZeroShot + patient-sim | `evotest_state_patsim/` | `skills/evo_patsim/` | `evops` |
+| ToT | `evotest_state_tot/` | `skills/evo_tot/` | `tot` |
+| ToT + patient-sim | `evotest_state_tot_patsim/` | `skills/evo_tot_patsim/` | `totps` |
+
 ```
-skills/evo/
-  episode_0.md              # Sanitized skill (episode 0 = baseline or seed)
-  episode_0_raw.md          # Raw skill before sanitization
-  episode_1.md              # Evolved skill from episode 1
+skills/evo/                         # (or evo_patsim/, evo_tot/, evo_tot_patsim/)
+  episode_0.md                      # Sanitized skill (episode 0 = baseline or seed)
+  episode_0_raw.md                  # Raw skill before sanitization
+  episode_1.md                      # Evolved skill from episode 1
   ...
 trajectories/
-  evo_ep0_appendicitis.json # Per-pathology trajectory JSON
+  evo_ep0_appendicitis.json         # Training trajectories (prefix = evo/evops/tot/totps)
   evo_ep0_cholecystitis.json
   ...
-evotest_state/
-  state.json                # Full UCB tree + scores (for --resume)
+  evo_baseline_appendicitis_test100.json  # Test evaluation trajectories
+  evo_evotest_best_appendicitis_test100.json
+  ...
+evotest_state/                      # (or _patsim/, _tot/, _tot_patsim/)
+  state.json                        # Full UCB tree + scores (for --resume)
+  episode_log.jsonl                 # Per-episode metrics log
+comparisons/
+  evo_evotest_best_vs_baseline_appendicitis_test100.md  # Final comparison reports
+  ...
 ```
+
+All 4 configs can run in parallel without file collisions.
 
 ### Final Evaluation on Test Set
 
-After the loop completes, the best skill path is printed (e.g.,
-`Best skill: skills/evo/episode_7.md`). Evaluate it on the held-out 100 patients
-per pathology:
+The recommended way is to use the shell scripts, which handle data swapping,
+evaluation, trajectory extraction, and comparison reports automatically:
 
 ```bash
-BEST_SKILL=skills/evo/episode_7.md  # from the script's final output
+# Full pipeline: train 10 episodes + test best skill on 7×100 patients
+bash scripts/evotest_full.sh 10 Qwen3_30B_A3B
 
-for PATHOLOGY in appendicitis cholecystitis diverticulitis pancreatitis; do
-    # Point to test split
-    cp data_splits/$PATHOLOGY/test.pkl \
-       data_splits/$PATHOLOGY/${PATHOLOGY}_hadm_info_first_diag.pkl
+# With patient simulator
+bash scripts/evotest_full.sh --patient-sim 10 Qwen3_30B_A3B
 
-    # Run with best skill
-    cd codes_Hager/MIMIC-Clinical-Decision-Making-Framework
-    python run.py \
-        pathology=$PATHOLOGY \
-        model=Qwen3_30B_A3B \
-        base_mimic=../../data_splits/$PATHOLOGY \
-        base_models=$HF_HOME \
-        lab_test_mapping_path=../../MIMIC-CDM-IV/lab_test_mapping.pkl \
-        local_logging_dir=../../results \
-        summarize=True \
-        annotate_clinical=True \
-        skill_path=../../$BEST_SKILL \
-        run_descr=_evotest_best_test100
-    cd ../..
+# With Tree of Thoughts
+bash scripts/evotest_full.sh --agent ToT 10 Qwen3_30B_A3B
 
-    # Evaluate
-    python scripts/evaluate_run.py \
-        --results_dir $(ls -td results/*${PATHOLOGY}*_evotest_best_test100* | head -1) \
-        --pathology $PATHOLOGY \
-        --patient_data data_splits/$PATHOLOGY/test.pkl
-done
+# Test a specific skill (skip training)
+bash scripts/evotest_test.sh skills/evo/episode_7.md Qwen3_30B_A3B
+bash scripts/evotest_test.sh --patient-sim skills/evo_patsim/episode_5.md Qwen3_30B_A3B
 ```
+
+The test script runs baseline + skill on all 7 pathologies (4 train + 3 unseen),
+generates comparison reports in `comparisons/`, and restores train data after.
+
+Flags (`--resume`, `--agent`, `--patient-sim`) go **before** positional args.
+Positional args: `[EPISODES] [MODEL] [EVOLVER_MODEL] [ANNOTATE_CLINICAL]`.
 
 ### How EvoTest Differs from Linear Evolution
 
@@ -484,9 +502,9 @@ git pull
 | `scripts/sanitize_skill.py` | Done | Remove disease name leakage from skills |
 | `scripts/compare_runs.py` | Done | Side-by-side comparison of two runs |
 | `scripts/parse_guidelines.py` | Done | Extract disease-specific guidelines from `open_guidelines.jsonl` |
-| `scripts/evotest_train.sh` | Done | EvoTest evolutionary optimization loop (bash) |
-| `scripts/evotest_test.sh` | Done | Test best skill on 100-patient test set (bash) |
-| `scripts/evotest_full.sh` | Done | Full pipeline: train → test best skill (bash) |
+| `scripts/evotest_train.sh` | Done | EvoTest training loop; supports `--agent`, `--patient-sim`, `--resume` |
+| `scripts/evotest_test.sh` | Done | Test skill on 7×100 test set; supports `--agent`, `--patient-sim` |
+| `scripts/evotest_full.sh` | Done | Full pipeline: train → best skill → test; all flags supported |
 | `scripts/evotest_clinical.py` | Done | **Automated EvoTest loop** with UCB tree (see section above) |
 
 ---
@@ -562,20 +580,21 @@ mimic_skills/
   skills/
     v1/acute_abdominal_pain.md       # Linear evolution (legacy)
     v2/acute_abdominal_pain.md
-    evo/                             # EvoTest evolution (evotest_clinical.py)
-      episode_0.md                   # Sanitized skills per episode
-      episode_0_raw.md              # Raw skills before sanitization
-      episode_1.md
-      ...
+    evo/                             # EvoTest: ZeroShot, sim OFF
+      episode_0.md ... episode_N.md
+    evo_patsim/                      # EvoTest: ZeroShot, sim ON
+    evo_tot/                         # EvoTest: ToT, sim OFF
+    evo_tot_patsim/                  # EvoTest: ToT, sim ON
   trajectories/
-    baseline_appendicitis_train10.json     # Linear pipeline trajectories
-    evo_ep0_appendicitis.json              # EvoTest trajectories
-    evo_ep0_cholecystitis.json
+    evo_ep0_appendicitis.json        # Training trajectories (evo/evops/tot/totps prefix)
+    evo_baseline_appendicitis_test100.json  # Test trajectories
     ...
-  evotest_state/
-    state.json                       # UCB tree checkpoint (for --resume)
+  evotest_state/                     # State: ZeroShot, sim OFF
+  evotest_state_patsim/              # State: ZeroShot, sim ON
+  evotest_state_tot/                 # State: ToT, sim OFF
+  evotest_state_tot_patsim/          # State: ToT, sim ON
   results/                           # Raw output from GPU server
-  comparisons/                       # Comparison reports
+  comparisons/                       # Comparison reports (prefixed by experiment)
   codes_Hager/...                    # Framework (modified agent.py)
   MIMIC-CDM-IV/...                   # Original full data
   EvoTest/...                        # Reference EvoTest repo (not used at runtime)

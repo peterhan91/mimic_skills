@@ -767,9 +767,9 @@ mimic_skills/
 │   ├── compare_runs.py               # Side-by-side comparison of two runs
 │   ├── evaluate_run.py               # Run PathologyEvaluator on results
 │   ├── parse_guidelines.py           # Extract clinical guidelines to markdown
-│   ├── evotest_train.sh              # EvoTest evolutionary optimization loop
-│   ├── evotest_test.sh              # Test best skill on 100-patient test set
-│   ├── evotest_full.sh              # Full pipeline: train → test best skill
+│   ├── evotest_train.sh              # EvoTest training; flags: --agent, --patient-sim, --resume
+│   ├── evotest_test.sh              # Test skill on 7×100; flags: --agent, --patient-sim
+│   ├── evotest_full.sh              # Full pipeline: train → test; all flags supported
 │   ├── container.sh                 # Apptainer container launcher (GPU server)
 │   └── start_vllm.sh               # Start vLLM server
 ├── data_splits/                       # Created by split_data.py
@@ -784,8 +784,10 @@ mimic_skills/
 ├── skills/                            # Generated SKILL.md files (sanitized)
 │   ├── v1/acute_abdominal_pain.md     # General skill (all pathologies)
 │   ├── v2/acute_abdominal_pain.md     # Refined after v1 eval
-│   ├── evo/                           # EvoTest-generated episodes
-│   └── ...
+│   ├── evo/                           # EvoTest: ZeroShot, sim OFF
+│   ├── evo_patsim/                    # EvoTest: ZeroShot, sim ON
+│   ├── evo_tot/                       # EvoTest: ToT, sim OFF
+│   └── evo_tot_patsim/               # EvoTest: ToT, sim ON
 ├── results/                           # Evaluation results from GPU server
 ├── codes_Hager/                       # Hager's framework (modified)
 ├── codes_openai_agent/                # OpenAI Agents SDK variant (Approach 6)

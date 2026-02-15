@@ -30,14 +30,23 @@ python codes_Hager/MIMIC-Clinical-Decision-Making-Framework/run.py \
   pathology=appendicitis model=Qwen3_30B_A3B \
   skill_path=skills/v3/acute_abdominal_pain.md skill_inject=both
 
-# Full experiment: EvoTest training + test evaluation
-bash scripts/evotest_full.sh
+# Full experiment: EvoTest training (4×10) + test evaluation (7×100)
+bash scripts/evotest_full.sh 10 Qwen3_30B_A3B
+
+# With patient simulator (agent gets only chief complaint, must Ask Patient)
+bash scripts/evotest_full.sh --patient-sim 10 Qwen3_30B_A3B
+
+# With Tree of Thoughts agent
+bash scripts/evotest_full.sh --agent ToT 10 Qwen3_30B_A3B
+
+# All flags combine (2×2 matrix: agent × patient-sim)
+bash scripts/evotest_full.sh --agent ToT --patient-sim 10 Qwen3_30B_A3B
 ```
 
 ## Pathologies
 
-Appendicitis, cholecystitis, diverticulitis, pancreatitis — 10 train / 100 test
-patients each, split from MIMIC-CDM-IV.
+**Train (4):** Appendicitis, cholecystitis, diverticulitis, pancreatitis — 10 train / 100 test patients each.
+**Test-only (3):** Cholangitis, bowel obstruction, pyelonephritis — test generalization to unseen diseases.
 
 ## Documentation
 
@@ -51,6 +60,10 @@ patients each, split from MIMIC-CDM-IV.
 
 | Script | Purpose |
 |--------|---------|
+| `scripts/evotest_full.sh` | Full pipeline: train → select best skill → test (7×100) |
+| `scripts/evotest_train.sh` | EvoTest training loop (4 pathologies × 10 patients) |
+| `scripts/evotest_test.sh` | Test a skill on held-out test set (7 pathologies × 100) |
+| `scripts/evotest_clinical.py` | Core EvoTest engine: UCB tree, Evolver, regression protection |
 | `scripts/evolve_skill.py` | Generate/refine skills from trajectory failures |
 | `scripts/extract_trajectories.py` | Convert result pkl → JSON for the Evolver |
 | `scripts/evaluate_run.py` | Run PathologyEvaluator on experiment results |

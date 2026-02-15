@@ -14,12 +14,13 @@ set -euo pipefail
 #   - Resumable: --resume continues from evotest_state/state.json
 #
 # Usage:
-#   bash scripts/evotest_train.sh [EPISODES] [MODEL] [EVOLVER_MODEL] [ANNOTATE_CLINICAL] [INITIAL_SKILL]
+#   bash scripts/evotest_train.sh [--patient-sim] [EPISODES] [MODEL] [EVOLVER_MODEL] [ANNOTATE_CLINICAL] [INITIAL_SKILL]
 #
 # Examples:
 #   bash scripts/evotest_train.sh                                    # 10 episodes, defaults
 #   bash scripts/evotest_train.sh 15 Qwen3_30B_A3B                  # 15 episodes
 #   bash scripts/evotest_train.sh 10 Qwen3_30B_A3B claude-opus-4-6 True
+#   bash scripts/evotest_train.sh --patient-sim 10 Qwen3_30B_A3B    # with patient simulator
 #   bash scripts/evotest_train.sh 10 Qwen3_30B_A3B claude-opus-4-6 True skills/v2/acute_abdominal_pain.md
 #
 # Tree of Thoughts (parallel with ZeroShot, separate state):
@@ -38,13 +39,17 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 # ============================================================
 RESUME=false
 AGENT="ZeroShot"
-while [ "${1:-}" = "--resume" ] || [ "${1:-}" = "--agent" ]; do
+PATIENT_SIMULATOR="False"
+while [ "${1:-}" = "--resume" ] || [ "${1:-}" = "--agent" ] || [ "${1:-}" = "--patient-sim" ]; do
     if [ "$1" = "--resume" ]; then
         RESUME=true
         shift
     elif [ "$1" = "--agent" ]; then
         AGENT="${2:?--agent requires a value (ZeroShot or ToT)}"
         shift 2
+    elif [ "$1" = "--patient-sim" ]; then
+        PATIENT_SIMULATOR="True"
+        shift
     fi
 done
 
@@ -54,11 +59,19 @@ EVOLVER_MODEL="${3:-claude-opus-4-6}"
 ANNOTATE_CLINICAL="${4:-True}"
 INITIAL_SKILL="${5:-}"
 
-# Agent-derived paths (must be after flag parsing)
-if [ "$AGENT" = "ToT" ]; then
+# Agent × patient-sim → 2×2 matrix of parallel experiment dirs
+if [ "$AGENT" = "ToT" ] && [ "$PATIENT_SIMULATOR" = "True" ]; then
+    SKILLS_DIR="$PROJECT_DIR/skills/evo_tot_patsim"
+    STATE_FILE="$PROJECT_DIR/evotest_state_tot_patsim/state.json"
+    RUN_PREFIX="totps"
+elif [ "$AGENT" = "ToT" ]; then
     SKILLS_DIR="$PROJECT_DIR/skills/evo_tot"
     STATE_FILE="$PROJECT_DIR/evotest_state_tot/state.json"
     RUN_PREFIX="tot"
+elif [ "$PATIENT_SIMULATOR" = "True" ]; then
+    SKILLS_DIR="$PROJECT_DIR/skills/evo_patsim"
+    STATE_FILE="$PROJECT_DIR/evotest_state_patsim/state.json"
+    RUN_PREFIX="evops"
 else
     SKILLS_DIR="$PROJECT_DIR/skills/evo"
     STATE_FILE="$PROJECT_DIR/evotest_state/state.json"
@@ -83,6 +96,7 @@ echo "  Episodes:          $EPISODES"
 echo "  Model:             $MODEL"
 echo "  Evolver:           $EVOLVER_MODEL"
 echo "  Annotate Clinical: $ANNOTATE_CLINICAL"
+echo "  Patient Simulator: $PATIENT_SIMULATOR"
 echo "  Resume:            $RESUME"
 if [ -n "$INITIAL_SKILL" ]; then
 echo "  Initial Skill:     $INITIAL_SKILL"
@@ -127,6 +141,7 @@ EVOTEST_CMD=(
     --model "$MODEL"
     --evolver-model "$EVOLVER_MODEL"
     --annotate-clinical "$ANNOTATE_CLINICAL"
+    --patient-simulator "$PATIENT_SIMULATOR"
     --agent "$AGENT"
     --pathologies "${TRAIN_PATHOLOGIES[@]}"
 )
@@ -151,6 +166,7 @@ fi
 # Auto-detect baseline trajectories for caching
 # Skip if resuming (state already has ep0) or if initial skill is set (cached
 # baseline may have been run with a different/no skill)
+# RUN_PREFIX (evo/tot/evops/totps) already isolates agent × patsim combos
 TRAJ_DIR="$PROJECT_DIR/trajectories"
 if [ "$RESUME" = false ] && [ -z "$INITIAL_SKILL" ] && [ -d "$TRAJ_DIR" ]; then
     BASELINE_OK=true
@@ -251,7 +267,9 @@ fi
 # ============================================================
 echo "  Next steps:"
 echo "    - Review best skill: cat $SKILLS_DIR/episode_<N>.md"
-echo "    - Continue evolving: bash scripts/evotest_train.sh --resume $((EPISODES + 5))"
+PATSIM_HINT=""
+if [ "$PATIENT_SIMULATOR" = "True" ]; then PATSIM_HINT="--patient-sim "; fi
+echo "    - Continue evolving: bash scripts/evotest_train.sh --resume ${PATSIM_HINT}$((EPISODES + 5))"
 echo "    - Run final eval on test set (100 patients per pathology):"
 echo "      BEST_SKILL=$SKILLS_DIR/episode_<N>.md"
 echo "      for P in appendicitis cholecystitis diverticulitis pancreatitis; do"

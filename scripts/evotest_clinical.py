@@ -234,12 +234,23 @@ class ClinicalEvoTest:
             "HF_HOME", os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
         )
 
-        # Agent type and derived paths (allows parallel ZeroShot + ToT runs)
+        # Agent type + patient sim → 2×2 matrix of parallel experiment dirs
         self.agent_type = getattr(args, "agent", "ZeroShot")
-        if self.agent_type == "ToT":
+        is_tot = self.agent_type == "ToT"
+        is_patsim = getattr(args, "patient_simulator", "False").lower() == "true"
+
+        if is_tot and is_patsim:
+            self.state_dir = PROJECT_DIR / "evotest_state_tot_patsim"
+            self.skills_dir = PROJECT_DIR / "skills" / "evo_tot_patsim"
+            self._run_prefix = "totps"
+        elif is_tot:
             self.state_dir = PROJECT_DIR / "evotest_state_tot"
             self.skills_dir = PROJECT_DIR / "skills" / "evo_tot"
             self._run_prefix = "tot"
+        elif is_patsim:
+            self.state_dir = PROJECT_DIR / "evotest_state_patsim"
+            self.skills_dir = PROJECT_DIR / "skills" / "evo_patsim"
+            self._run_prefix = "evops"
         else:
             self.state_dir = STATE_DIR
             self.skills_dir = PROJECT_DIR / "skills" / "evo"
@@ -429,6 +440,8 @@ class ClinicalEvoTest:
                 f"annotate_clinical={self.args.annotate_clinical}",
                 f"run_descr={descr}",
             ]
+            if self.args.patient_simulator.lower() == "true":
+                run_cmd.append("patient_simulator=True")
             if skill_file:
                 run_cmd.append(f"skill_path={skill_file}")
             if self.agent_type != "ZeroShot":
@@ -638,6 +651,23 @@ class ClinicalEvoTest:
                 f"{self.guidelines_context}\n\n"
             )
 
+        # --- Section 6: Patient simulator context ---
+        patient_sim_section = ""
+        if self.args.patient_simulator.lower() == "true":
+            patient_sim_section = """## Patient Simulator Mode (ACTIVE)
+
+The agent operates in **patient simulator mode**: it receives ONLY a brief chief complaint (e.g., "___ presents with 4 days of RLQ pain.") instead of the full Patient History. It must actively gather history by calling the **"Ask Patient"** tool to ask questions.
+
+The agent has these tools: `Physical Examination`, `Laboratory Tests`, `Imaging`, `Ask Patient`
+
+**Key constraints:**
+- The agent does NOT know PMH, medications, social history, or family history at the start
+- It must ask targeted questions via "Ask Patient" to gather this information
+- Efficient questioning is critical — each Ask Patient call uses a turn (max 10 rounds total)
+- The patient responds naturally (may be vague, uses lay terms, does not volunteer diagnoses)
+
+"""
+
         prompt = f"""You are a clinical AI system optimizer. Your task is to analyze diagnostic agent trajectories and generate an improved clinical reasoning skill.
 
 ## Evolution History
@@ -652,7 +682,7 @@ class ClinicalEvoTest:
 
 {metric_section}
 
-{parent_skill_section}{guidelines_section}## Failed Trajectories with Gap Analysis
+{parent_skill_section}{guidelines_section}{patient_sim_section}## Failed Trajectories with Gap Analysis
 
 {gap_section}
 
@@ -673,7 +703,14 @@ The skill should be written as markdown with clear step-by-step instructions:
 - How to choose imaging modality based on suspected pathology location
 - How to interpret lab values in context
 - When to recommend surgical vs conservative treatment
-- How to maintain and update a differential diagnosis after each observation
+- How to maintain and update a differential diagnosis after each observation"""
+
+        if self.args.patient_simulator.lower() == "true":
+            prompt += """
+- **How to efficiently gather patient history via "Ask Patient"** — what to ask first (pain characterization, PMH, medications, social habits), how to combine questions, when to stop asking and move to examination
+- **The skill MUST mention "Ask Patient" as an available tool** and teach the agent to use it before or alongside Physical Examination"""
+
+        prompt += """
 
 Output ONLY the skill content in markdown format. No preamble or explanation."""
 
@@ -698,6 +735,7 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                 "model": self.args.model,
                 "evolver_model": self.args.evolver_model,
                 "annotate_clinical": self.args.annotate_clinical,
+                "patient_simulator": self.args.patient_simulator,
                 "exploration_constant": self.args.exploration_constant,
                 "depth_constant": self.args.depth_constant,
                 "drop_threshold": self.args.drop_threshold,
@@ -762,6 +800,7 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
         logger.info(f"  Model:            {self.args.model}")
         logger.info(f"  Evolver:          {self.args.evolver_model}")
         logger.info(f"  Annotate clinical:{self.args.annotate_clinical}")
+        logger.info(f"  Patient simulator:{self.args.patient_simulator}")
         logger.info(f"  UCB c={self.args.exploration_constant}, alpha={self.args.depth_constant}")
         logger.info(f"  Drop threshold:   {self.args.drop_threshold}")
         logger.info(f"  State dir:        {self.state_dir}")
@@ -799,6 +838,12 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                 # Try reusing cached baseline trajectories
                 result = None
                 if self.args.reuse_baseline:
+                    if self.args.patient_simulator.lower() == "true":
+                        logger.warning(
+                            "  WARNING: --reuse-baseline with --patient-simulator True — "
+                            "cached baselines may have used full Patient History (not chief complaint). "
+                            "Scores may be incomparable. Consider running baseline fresh."
+                        )
                     reuse_dir = Path(self.args.reuse_baseline)
                     logger.info(f"  Reusing baseline trajectories from {reuse_dir}...")
                     result = self.load_baseline_from_trajectories(reuse_dir)
@@ -1010,6 +1055,11 @@ def main():
     parser.add_argument(
         "--annotate-clinical", type=str, default="True",
         help="Enable clinical lab annotations (default: True)"
+    )
+    parser.add_argument(
+        "--patient-simulator", type=str, default="False",
+        help="Enable patient simulator mode: agent receives only chief complaint "
+             "and must gather history via Ask Patient tool (default: False)"
     )
     parser.add_argument(
         "--exploration-constant", type=float, default=1.0,
