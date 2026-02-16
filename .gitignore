@@ -83,3 +83,4 @@ open_guidelines.jsonl
 
 # Jupyter
 .ipynb_checkpoints/
+triage.csv.gz
