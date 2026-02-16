@@ -5,36 +5,47 @@ set -euo pipefail
 # evotest_full.sh — Train on 4×10, test best skill on 7×100
 #
 # Usage:
-#   bash scripts/evotest_full.sh [--patient-sim] [EPISODES] [MODEL] [EVOLVER_MODEL] [ANNOTATE_CLINICAL]
+#   bash scripts/evotest_full.sh [FLAGS] [EPISODES] [MODEL] [EVOLVER_MODEL] [ANNOTATE_CLINICAL]
 #
-# Tree of Thoughts (parallel with ZeroShot, separate state):
+# Flags (before positional args):
+#   --agent ToT|ZeroShot     Agent type (default: ZeroShot)
+#   --patient-sim            Enable patient simulator
+#   --resume                 Resume from saved state
+#   --tot-max-depth N        ToT max search depth (recommend 15 for patsim)
+#   --tot-breadth N          ToT frontier size
+#   --tot-n-generate N       ToT candidates per step
+#   --tot-temperature F      ToT generation temperature
+#
+# Examples:
 #   bash scripts/evotest_full.sh --agent ToT 10 Qwen3_30B_A3B
-#
-# Resume after interruption (skips to test if training is done):
-#   bash scripts/evotest_full.sh --resume [EPISODES] [MODEL] ...
+#   bash scripts/evotest_full.sh --agent ToT --patient-sim --tot-max-depth 15 10
+#   bash scripts/evotest_full.sh --resume 10 Qwen3_30B_A3B
 # ============================================================
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
-# Parse flags (--resume, --agent, --patient-sim)
+# Parse flags (--resume, --agent, --patient-sim, --tot-*)
 RESUME_FLAG=()
 AGENT_FLAG=()
 PATSIM_FLAG=()
+TOT_FLAGS=()
 AGENT="ZeroShot"
 PATIENT_SIMULATOR="False"
-while [ "${1:-}" = "--resume" ] || [ "${1:-}" = "--agent" ] || [ "${1:-}" = "--patient-sim" ]; do
-    if [ "$1" = "--resume" ]; then
-        RESUME_FLAG=(--resume)
-        shift
-    elif [ "$1" = "--agent" ]; then
-        AGENT="${2:?--agent requires a value (ZeroShot or ToT)}"
-        AGENT_FLAG=(--agent "$AGENT")
-        shift 2
-    elif [ "$1" = "--patient-sim" ]; then
-        PATIENT_SIMULATOR="True"
-        PATSIM_FLAG=(--patient-sim)
-        shift
-    fi
+while [[ "${1:-}" == --* ]]; do
+    case "$1" in
+        --resume)
+            RESUME_FLAG=(--resume); shift ;;
+        --agent)
+            AGENT="${2:?--agent requires a value (ZeroShot or ToT)}"
+            AGENT_FLAG=(--agent "$AGENT"); shift 2 ;;
+        --patient-sim)
+            PATIENT_SIMULATOR="True"
+            PATSIM_FLAG=(--patient-sim); shift ;;
+        --tot-max-depth|--tot-breadth|--tot-n-generate|--tot-temperature)
+            TOT_FLAGS+=("$1" "${2:?$1 requires a value}"); shift 2 ;;
+        *)
+            echo "Unknown flag: $1" >&2; exit 1 ;;
+    esac
 done
 
 # Agent × patient-sim → 2×2 matrix of parallel experiment dirs
@@ -78,6 +89,7 @@ bash "$PROJECT_DIR/scripts/evotest_train.sh" \
     "${RESUME_FLAG[@]+"${RESUME_FLAG[@]}"}" \
     "${AGENT_FLAG[@]+"${AGENT_FLAG[@]}"}" \
     "${PATSIM_FLAG[@]+"${PATSIM_FLAG[@]}"}" \
+    "${TOT_FLAGS[@]+"${TOT_FLAGS[@]}"}" \
     "$EPISODES" "$MODEL" "$EVOLVER_MODEL" "$ANNOTATE_CLINICAL"
 
 # ============================================================
@@ -122,6 +134,7 @@ echo ""
 bash "$PROJECT_DIR/scripts/evotest_test.sh" \
     "${AGENT_FLAG[@]+"${AGENT_FLAG[@]}"}" \
     "${PATSIM_FLAG[@]+"${PATSIM_FLAG[@]}"}" \
+    "${TOT_FLAGS[@]+"${TOT_FLAGS[@]}"}" \
     "$BEST_SKILL" "$MODEL" "$ANNOTATE_CLINICAL"
 
 echo ""

@@ -66,18 +66,20 @@ _sanitize = _get_sanitizer()
 
 # ── Chief complaint extraction ───────────────────────────────────────
 
-def extract_chief_complaint(patient_history: str) -> str:
-    """Extract a minimal chief complaint from the full Patient History.
+def extract_chief_complaint(patient_history: str, n_sentences: int = 3) -> str:
+    """Extract a brief chief complaint from the full Patient History.
 
     Strategy: take the text before "Past Medical History:" (the HPI),
-    then return only the first sentence. This gives the agent a starting
-    point without revealing PMH, Social, or Family history.
+    then return the first N sentences. Skips trivially short fragments
+    like "Mr." or "___." that result from MIMIC anonymization.
 
     Examples:
-        Input:  "___ presents with 4 days of RLQ pain. Says symptoms
+        Input:  "Mr. ___ presents with 4 days of RLQ pain. Says symptoms
                  started after heavy dinner. Reports decreased appetite
                  and chills.  Past Medical History: PMH: none ..."
-        Output: "___ presents with 4 days of RLQ pain."
+        Output: "Mr. ___ presents with 4 days of RLQ pain. Says symptoms
+                 started after heavy dinner. Reports decreased appetite
+                 and chills."
     """
     text = patient_history.strip()
     if not text:
@@ -92,19 +94,33 @@ def extract_chief_complaint(patient_history: str) -> str:
     if not hpi:
         return text  # fallback: return everything
 
-    # Take the first sentence (up to the first period followed by space or end)
-    sentence_match = re.match(r"(.+?\.)\s", hpi)
-    if sentence_match:
-        return sentence_match.group(1).strip()
+    # Split into sentences: period followed by whitespace
+    # Keep trivially short fragments (e.g., "Mr.", "___." ) attached to the next sentence
+    raw_parts = re.split(r"(?<=\.)\s+", hpi)
+    sentences = []
+    buf = ""
+    for part in raw_parts:
+        buf = (buf + " " + part).strip() if buf else part
+        # A real sentence should be >10 chars (skip "Mr.", "___.", "Ms.")
+        if len(buf) > 10:
+            sentences.append(buf)
+            buf = ""
+    if buf and sentences:
+        sentences[-1] += " " + buf  # attach trailing fragment to last sentence
+    elif buf:
+        sentences.append(buf)
 
-    # Fallback: if no sentence boundary found, return the whole HPI
-    # (but cap at ~200 chars to keep it brief)
-    if len(hpi) > 200:
-        # Find the last space before 200 chars
-        cutoff = hpi[:200].rfind(" ")
+    if not sentences:
+        return hpi
+
+    result = " ".join(sentences[:n_sentences])
+
+    # Cap at ~300 chars to keep it brief
+    if len(result) > 300:
+        cutoff = result[:300].rfind(" ")
         if cutoff > 50:
-            return hpi[:cutoff] + "..."
-    return hpi
+            return result[:cutoff] + "..."
+    return result
 
 
 # ── Simulator prompt ─────────────────────────────────────────────────

@@ -9,12 +9,21 @@ set -euo pipefail
 # run concurrently with training).
 #
 # Usage:
-#   bash scripts/evotest_test.sh [--patient-sim] <BEST_SKILL_PATH> [MODEL] [ANNOTATE_CLINICAL]
+#   bash scripts/evotest_test.sh [FLAGS] <BEST_SKILL_PATH> [MODEL] [ANNOTATE_CLINICAL]
+#
+# Flags (before positional args):
+#   --agent ToT|ZeroShot     Agent type (default: ZeroShot)
+#   --patient-sim            Enable patient simulator
+#   --tot-max-depth N        ToT max search depth (recommend 15 for patsim)
+#   --tot-breadth N          ToT frontier size
+#   --tot-n-generate N       ToT candidates per step
+#   --tot-temperature F      ToT generation temperature
 #
 # Examples:
 #   bash scripts/evotest_test.sh skills/evo/episode_5.md
 #   bash scripts/evotest_test.sh skills/evo/episode_5.md vLLM_Qwen3 True
 #   bash scripts/evotest_test.sh --patient-sim skills/evo/episode_5.md vLLM_Qwen3 True
+#   bash scripts/evotest_test.sh --agent ToT --patient-sim --tot-max-depth 15 skills/evo_tot_patsim/episode_4.md
 #
 # The script will:
 #   1. Run baseline (no skill) on all 7 pathologies (100 patients each)
@@ -26,14 +35,20 @@ set -euo pipefail
 
 AGENT="ZeroShot"
 PATIENT_SIMULATOR="False"
-while [ "${1:-}" = "--agent" ] || [ "${1:-}" = "--patient-sim" ]; do
-    if [ "$1" = "--agent" ]; then
-        AGENT="${2:?--agent requires a value (ZeroShot or ToT)}"
-        shift 2
-    elif [ "$1" = "--patient-sim" ]; then
-        PATIENT_SIMULATOR="True"
-        shift
-    fi
+TOT_ARGS=()
+while [[ "${1:-}" == --* ]]; do
+    case "$1" in
+        --agent)
+            AGENT="${2:?--agent requires a value (ZeroShot or ToT)}"; shift 2 ;;
+        --patient-sim)
+            PATIENT_SIMULATOR="True"; shift ;;
+        --tot-max-depth|--tot-breadth|--tot-n-generate|--tot-temperature)
+            # Convert --tot-max-depth → tot_max_depth= for Hydra
+            KEY=$(echo "${1#--}" | tr '-' '_')
+            TOT_ARGS+=("${KEY}=${2:?$1 requires a value}"); shift 2 ;;
+        *)
+            echo "Unknown flag: $1" >&2; exit 1 ;;
+    esac
 done
 
 BEST_SKILL="${1:?Usage: $0 [--agent ToT] [--patient-sim] <BEST_SKILL_PATH> [MODEL] [ANNOTATE_CLINICAL]}"
@@ -164,6 +179,7 @@ for P in "${PATHOLOGIES[@]}"; do
         summarize=True
         annotate_clinical="$ANNOTATE_CLINICAL"
         run_descr="$BASELINE_DESCR"
+        "${TOT_ARGS[@]+"${TOT_ARGS[@]}"}"
     )
     if [ "$PATIENT_SIMULATOR" = "True" ]; then
         BASELINE_CMD+=(patient_simulator=True)
@@ -233,6 +249,7 @@ for P in "${PATHOLOGIES[@]}"; do
         annotate_clinical="$ANNOTATE_CLINICAL"
         skill_path="$BEST_SKILL"
         run_descr="$SKILL_DESCR"
+        "${TOT_ARGS[@]+"${TOT_ARGS[@]}"}"
     )
     if [ "$PATIENT_SIMULATOR" = "True" ]; then
         SKILL_CMD+=(patient_simulator=True)

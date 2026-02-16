@@ -14,17 +14,24 @@ set -euo pipefail
 #   - Resumable: --resume continues from evotest_state/state.json
 #
 # Usage:
-#   bash scripts/evotest_train.sh [--patient-sim] [EPISODES] [MODEL] [EVOLVER_MODEL] [ANNOTATE_CLINICAL] [INITIAL_SKILL]
+#   bash scripts/evotest_train.sh [FLAGS] [EPISODES] [MODEL] [EVOLVER_MODEL] [ANNOTATE_CLINICAL] [INITIAL_SKILL]
+#
+# Flags (before positional args):
+#   --agent ToT|ZeroShot     Agent type (default: ZeroShot)
+#   --patient-sim            Enable patient simulator
+#   --resume                 Resume from saved state
+#   --tot-max-depth N        ToT max search depth (default: config, recommend 15 for patsim)
+#   --tot-breadth N          ToT frontier size
+#   --tot-n-generate N       ToT candidates per step
+#   --tot-temperature F      ToT generation temperature
 #
 # Examples:
 #   bash scripts/evotest_train.sh                                    # 10 episodes, defaults
 #   bash scripts/evotest_train.sh 15 Qwen3_30B_A3B                  # 15 episodes
 #   bash scripts/evotest_train.sh 10 Qwen3_30B_A3B claude-opus-4-6 True
 #   bash scripts/evotest_train.sh --patient-sim 10 Qwen3_30B_A3B    # with patient simulator
+#   bash scripts/evotest_train.sh --agent ToT --patient-sim --tot-max-depth 15 10  # ToT + patsim
 #   bash scripts/evotest_train.sh 10 Qwen3_30B_A3B claude-opus-4-6 True skills/v2/acute_abdominal_pain.md
-#
-# Tree of Thoughts (parallel with ZeroShot, separate state):
-#   bash scripts/evotest_train.sh --agent ToT 10 Qwen3_30B_A3B
 #
 # Resume after interruption:
 #   bash scripts/evotest_train.sh --resume [EPISODES]
@@ -40,17 +47,29 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RESUME=false
 AGENT="ZeroShot"
 PATIENT_SIMULATOR="False"
-while [ "${1:-}" = "--resume" ] || [ "${1:-}" = "--agent" ] || [ "${1:-}" = "--patient-sim" ]; do
-    if [ "$1" = "--resume" ]; then
-        RESUME=true
-        shift
-    elif [ "$1" = "--agent" ]; then
-        AGENT="${2:?--agent requires a value (ZeroShot or ToT)}"
-        shift 2
-    elif [ "$1" = "--patient-sim" ]; then
-        PATIENT_SIMULATOR="True"
-        shift
-    fi
+TOT_MAX_DEPTH=""
+TOT_BREADTH=""
+TOT_N_GENERATE=""
+TOT_TEMPERATURE=""
+while [[ "${1:-}" == --* ]]; do
+    case "$1" in
+        --resume)
+            RESUME=true; shift ;;
+        --agent)
+            AGENT="${2:?--agent requires a value (ZeroShot or ToT)}"; shift 2 ;;
+        --patient-sim)
+            PATIENT_SIMULATOR="True"; shift ;;
+        --tot-max-depth)
+            TOT_MAX_DEPTH="${2:?--tot-max-depth requires a value}"; shift 2 ;;
+        --tot-breadth)
+            TOT_BREADTH="${2:?--tot-breadth requires a value}"; shift 2 ;;
+        --tot-n-generate)
+            TOT_N_GENERATE="${2:?--tot-n-generate requires a value}"; shift 2 ;;
+        --tot-temperature)
+            TOT_TEMPERATURE="${2:?--tot-temperature requires a value}"; shift 2 ;;
+        *)
+            echo "Unknown flag: $1" >&2; exit 1 ;;
+    esac
 done
 
 EPISODES="${1:-10}"
@@ -162,6 +181,12 @@ if [ -n "$INITIAL_SKILL" ]; then
         echo "WARNING: Initial skill not found: $INITIAL_SKILL — starting without seed"
     fi
 fi
+
+# Pass through ToT hyperparameters
+[ -n "$TOT_MAX_DEPTH" ]  && EVOTEST_CMD+=(--tot-max-depth "$TOT_MAX_DEPTH")
+[ -n "$TOT_BREADTH" ]    && EVOTEST_CMD+=(--tot-breadth "$TOT_BREADTH")
+[ -n "$TOT_N_GENERATE" ] && EVOTEST_CMD+=(--tot-n-generate "$TOT_N_GENERATE")
+[ -n "$TOT_TEMPERATURE" ] && EVOTEST_CMD+=(--tot-temperature "$TOT_TEMPERATURE")
 
 # Auto-detect baseline trajectories for caching
 # Skip if resuming (state already has ep0) or if initial skill is set (cached
