@@ -23,6 +23,7 @@ class Actions(Enum):
     Imaging = "Imaging"
     Diagnostic_Criteria = "Diagnostic Criteria"
     Final_Diagnosis = "Final Diagnosis"
+    Ask_Patient = "Ask Patient"
 
 
 def is_valid_action(action: str) -> bool:

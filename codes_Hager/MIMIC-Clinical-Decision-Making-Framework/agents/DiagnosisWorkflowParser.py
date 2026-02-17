@@ -84,6 +84,8 @@ class DiagnosisWorkflowParser(AgentOutputParser):
             # Check for action input if necessary
             if self.action in ["Imaging", "Laboratory Tests", "Diagnostic Criteria"]:
                 self.parse_action_input()
+            elif self.action == "Ask Patient":
+                self.parse_ask_patient_input()
         except InvalidActionError as e:
             return [e.invalid_agent_action]
 
@@ -321,6 +323,18 @@ class DiagnosisWorkflowParser(AgentOutputParser):
             for i, x in enumerate(self.action_input)
             if self.action_input.index(x) == i
         ]
+
+    def parse_ask_patient_input(self) -> None:
+        """Parse the action input for Ask Patient — extract raw question text."""
+        found = self.parse_action_input_from_llm_output()
+        if found and self.action_input:
+            # Strip surrounding quotes if present
+            self.action_input = self.action_input.strip().strip('"').strip("'").strip()
+        if not self.action_input or self.action_input.lower() == "none":
+            # Default question if none provided or explicitly "None"
+            self.action_input = (
+                "Can you describe your symptoms, medical history, and medications?"
+            )
 
     def parse_diagnostic_criteria_action_input(self) -> None:
         """
