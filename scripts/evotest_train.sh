@@ -18,7 +18,7 @@ set -euo pipefail
 #
 # Flags (before positional args):
 #   --agent ToT|ZeroShot     Agent type (default: ZeroShot)
-#   --patient-sim            Enable patient simulator
+#   --no-patient-sim         Disable patient simulator (on by default)
 #   --resume                 Resume from saved state
 #   --tot-max-depth N        ToT max search depth (default: config, recommend 15 for patsim)
 #   --tot-breadth N          ToT frontier size
@@ -29,8 +29,8 @@ set -euo pipefail
 #   bash scripts/evotest_train.sh                                    # 10 episodes, defaults
 #   bash scripts/evotest_train.sh 15 Qwen3_30B_A3B                  # 15 episodes
 #   bash scripts/evotest_train.sh 10 Qwen3_30B_A3B claude-opus-4-6 True
-#   bash scripts/evotest_train.sh --patient-sim 10 Qwen3_30B_A3B    # with patient simulator
-#   bash scripts/evotest_train.sh --agent ToT --patient-sim --tot-max-depth 15 10  # ToT + patsim
+#   bash scripts/evotest_train.sh --no-patient-sim 10 Qwen3_30B_A3B # disable patient simulator
+#   bash scripts/evotest_train.sh --agent ToT --tot-max-depth 15 10  # ToT + patsim (default)
 #   bash scripts/evotest_train.sh 10 Qwen3_30B_A3B claude-opus-4-6 True skills/v2/acute_abdominal_pain.md
 #
 # Resume after interruption:
@@ -46,7 +46,7 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 # ============================================================
 RESUME=false
 AGENT="ZeroShot"
-PATIENT_SIMULATOR="False"
+PATIENT_SIMULATOR="True"
 TOT_MAX_DEPTH=""
 TOT_BREADTH=""
 TOT_N_GENERATE=""
@@ -57,8 +57,8 @@ while [[ "${1:-}" == --* ]]; do
             RESUME=true; shift ;;
         --agent)
             AGENT="${2:?--agent requires a value (ZeroShot or ToT)}"; shift 2 ;;
-        --patient-sim)
-            PATIENT_SIMULATOR="True"; shift ;;
+        --no-patient-sim)
+            PATIENT_SIMULATOR="False"; shift ;;
         --tot-max-depth)
             TOT_MAX_DEPTH="${2:?--tot-max-depth requires a value}"; shift 2 ;;
         --tot-breadth)
@@ -293,7 +293,7 @@ fi
 echo "  Next steps:"
 echo "    - Review best skill: cat $SKILLS_DIR/episode_<N>.md"
 PATSIM_HINT=""
-if [ "$PATIENT_SIMULATOR" = "True" ]; then PATSIM_HINT="--patient-sim "; fi
+if [ "$PATIENT_SIMULATOR" = "False" ]; then PATSIM_HINT="--no-patient-sim "; fi
 echo "    - Continue evolving: bash scripts/evotest_train.sh --resume ${PATSIM_HINT}$((EPISODES + 5))"
 AGENT_HINT=""
 if [ "$AGENT" != "ZeroShot" ]; then AGENT_HINT="--agent $AGENT "; fi

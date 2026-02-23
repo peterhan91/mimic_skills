@@ -88,7 +88,7 @@ class TreeOfThoughtsRunner:
         max_context_length: int,
         n_generate: int = 3,
         breadth: int = 2,
-        max_depth: int = 10,
+        max_depth: int = 20,
         temperature: float = 0.7,
         eval_temperature: float = 0.0,
         patient_simulator=None,
@@ -424,7 +424,7 @@ def build_tot_runner(
     # ToT-specific params
     tot_n_generate=10,
     tot_breadth=3,
-    tot_max_depth=10,
+    tot_max_depth=20,
     tot_temperature=1.0,
     tot_eval_temperature=0.0,
 ):

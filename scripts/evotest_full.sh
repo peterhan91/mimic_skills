@@ -9,7 +9,7 @@ set -euo pipefail
 #
 # Flags (before positional args):
 #   --agent ToT|ZeroShot     Agent type (default: ZeroShot)
-#   --patient-sim            Enable patient simulator
+#   --no-patient-sim         Disable patient simulator (on by default)
 #   --resume                 Resume from saved state
 #   --tot-max-depth N        ToT max search depth (recommend 15 for patsim)
 #   --tot-breadth N          ToT frontier size
@@ -18,19 +18,19 @@ set -euo pipefail
 #
 # Examples:
 #   bash scripts/evotest_full.sh --agent ToT 10 Qwen3_30B_A3B
-#   bash scripts/evotest_full.sh --agent ToT --patient-sim --tot-max-depth 15 10
+#   bash scripts/evotest_full.sh --agent ToT --tot-max-depth 15 10
 #   bash scripts/evotest_full.sh --resume 10 Qwen3_30B_A3B
 # ============================================================
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
-# Parse flags (--resume, --agent, --patient-sim, --tot-*)
+# Parse flags (--resume, --agent, --no-patient-sim, --tot-*)
 RESUME_FLAG=()
 AGENT_FLAG=()
 PATSIM_FLAG=()
 TOT_FLAGS=()
 AGENT="ZeroShot"
-PATIENT_SIMULATOR="False"
+PATIENT_SIMULATOR="True"
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
         --resume)
@@ -38,9 +38,9 @@ while [[ "${1:-}" == --* ]]; do
         --agent)
             AGENT="${2:?--agent requires a value (ZeroShot or ToT)}"
             AGENT_FLAG=(--agent "$AGENT"); shift 2 ;;
-        --patient-sim)
-            PATIENT_SIMULATOR="True"
-            PATSIM_FLAG=(--patient-sim); shift ;;
+        --no-patient-sim)
+            PATIENT_SIMULATOR="False"
+            PATSIM_FLAG=(--no-patient-sim); shift ;;
         --tot-max-depth|--tot-breadth|--tot-n-generate|--tot-temperature)
             TOT_FLAGS+=("$1" "${2:?$1 requires a value}"); shift 2 ;;
         *)

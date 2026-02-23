@@ -1057,9 +1057,9 @@ def main():
         help="Enable clinical lab annotations (default: True)"
     )
     parser.add_argument(
-        "--patient-simulator", type=str, default="False",
+        "--patient-simulator", type=str, default="True",
         help="Enable patient simulator mode: agent receives only chief complaint "
-             "and must gather history via Ask Patient tool (default: False)"
+             "and must gather history via Ask Patient tool (default: True)"
     )
     parser.add_argument(
         "--exploration-constant", type=float, default=1.0,

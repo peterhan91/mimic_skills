@@ -196,7 +196,7 @@ def build_aggregate_table(all_data):
 
 
 def build_evolver_prompt(all_data, all_failures, prev_skill=None, guidelines_context=None,
-                         patient_simulator=False):
+                         patient_simulator=True):
     """Construct the full Evolver prompt from multiple pathologies."""
     pathologies = [d["pathology"] for d in all_data]
     total_n = sum(d["n_patients"] for d in all_data)
@@ -325,7 +325,7 @@ def call_anthropic(prompt, model):
 
 
 def evolve_skill(trajectories_paths, model, output_path, prev_skill_path=None,
-                  guidelines_dir=None, dry_run=False, patient_simulator=False):
+                  guidelines_dir=None, dry_run=False, patient_simulator=True):
     """Full evolution pipeline: load -> analyze -> generate -> save."""
     # Load all trajectory files
     all_data = []
@@ -423,8 +423,8 @@ def main():
         help="Disable clinical guidelines injection"
     )
     parser.add_argument(
-        "--patient-simulator", action="store_true",
-        help="Enable patient simulator mode in Evolver prompt (teaches Ask Patient usage)"
+        "--no-patient-simulator", action="store_true", default=False,
+        help="Disable patient simulator mode in Evolver prompt (patient sim is on by default)"
     )
     parser.add_argument(
         "--dry-run", action="store_true",
@@ -441,7 +441,7 @@ def main():
                  prev_skill_path=args.prev_skill,
                  guidelines_dir=guidelines_dir,
                  dry_run=args.dry_run,
-                 patient_simulator=args.patient_simulator)
+                 patient_simulator=not args.no_patient_simulator)
 
 
 if __name__ == "__main__":

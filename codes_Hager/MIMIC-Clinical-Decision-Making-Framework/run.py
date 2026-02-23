@@ -184,7 +184,7 @@ def run(args: DictConfig):
                 patient_simulator=patient_sim,
                 tot_n_generate=args.get("tot_n_generate", 3),
                 tot_breadth=args.get("tot_breadth", 2),
-                tot_max_depth=args.get("tot_max_depth", 10),
+                tot_max_depth=args.get("tot_max_depth", 20),
                 tot_temperature=args.get("tot_temperature", 0.7),
                 tot_eval_temperature=args.get("tot_eval_temperature", 0.0),
             )
