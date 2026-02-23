@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - paths: example 
-  - model: WizardLM70B
+  - model: Qwen3_30B_A3B
 
 pathology: appendicitis
 agent: ZeroShot

@@ -14,13 +14,17 @@ set -euo pipefail
 # Stop: Ctrl+C
 # ============================================================
 
-SIF="/home/than/images/vllm_26.01-py3.sif"
-OVERLAY="/home/than/images/overlay.img"
-HF_CACHE="/home/than/.cache/huggingface"
-PROJECT="/home/than/DeepLearning/mimic_skills"
+# Source local .env if it exists (machine-specific paths & GPU config)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[ -f "$SCRIPT_DIR/../.env" ] && source "$SCRIPT_DIR/../.env"
+
+SIF="${MIMIC_SIF:?ERROR: Set MIMIC_SIF in .env (path to vllm SIF image)}"
+OVERLAY="${MIMIC_OVERLAY:?ERROR: Set MIMIC_OVERLAY in .env (path to overlay image)}"
+HF_CACHE="${MIMIC_HF_CACHE:-$HOME/.cache/huggingface}"
+PROJECT="${MIMIC_PROJECT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 VLLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
-VLLM_TP=2
+VLLM_TP="${VLLM_TP:-1}"
 VLLM_GPU_UTIL=0.9
 VLLM_MAX_LEN=32768
 VLLM_PORT=8000
@@ -55,9 +59,9 @@ echo "    bash scripts/container.sh evotest 10"
 echo "============================================================"
 echo ""
 
-CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-1,2}" \
+CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}" \
 apptainer exec --nv --fakeroot \
-    --overlay "$OVERLAY" \
+    --overlay "$OVERLAY"${OVERLAY_MOUNT:+:$OVERLAY_MOUNT} \
     --bind "$HF_CACHE":/root/.cache/huggingface \
     --bind "$PROJECT":/workspace \
     "$SIF" \
