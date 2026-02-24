@@ -115,7 +115,8 @@ def run(args: DictConfig):
     # Load desired model
     llm = CustomLLM(
         model_name=args.model_name,
-        openai_api_key=args.openai_api_key,
+        openai_api_key=args.get("openai_api_key", None),
+        anthropic_api_key=args.get("anthropic_api_key", None),
         tags=tags,
         max_context_length=args.max_context_length,
         exllama=args.exllama,

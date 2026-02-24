@@ -1,5 +1,6 @@
 import os
 from os.path import join
+from pathlib import Path
 import pickle
 import random
 from datetime import datetime
@@ -12,6 +13,14 @@ import hydra
 from omegaconf import DictConfig
 from loguru import logger
 import langchain
+
+# Load .env from project root (mimic_skills/) for API keys
+from dotenv import load_dotenv
+for _p in [Path(__file__).resolve().parents[2], Path(__file__).resolve().parent]:
+    _env = _p / ".env"
+    if _env.exists():
+        load_dotenv(_env)
+        break
 
 from dataset.utils import load_hadm_from_file
 from utils.logging import append_to_pickle_file
@@ -78,7 +87,8 @@ def run(args: DictConfig):
     # Load desired model
     llm = CustomLLM(
         model_name=args.model_name,
-        openai_api_key=args.openai_api_key,
+        openai_api_key=args.get("openai_api_key", None),
+        anthropic_api_key=args.get("anthropic_api_key", None),
         vllm_base_url=args.get("vllm_base_url", None),
         tags=tags,
         max_context_length=args.max_context_length,

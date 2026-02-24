@@ -20,6 +20,10 @@ try:
 except ImportError:
     ExLlamaV2Sampler = None
 import tiktoken
+try:
+    import anthropic as anthropic_module
+except ImportError:
+    anthropic_module = None
 
 from models.utils import create_stop_criteria, create_stop_criteria_exllama
 from agents.agent import STOP_WORDS
@@ -41,6 +45,8 @@ class CustomLLM(LLM):
     self_consistency: bool = False
 
     openai_api_key: str = None
+    anthropic_api_key: str = None
+    anthropic_client: Any = None
     vllm_base_url: str = None
     tags: Dict[str, str] = None
 
@@ -84,6 +90,15 @@ class CustomLLM(LLM):
         elif self.openai_api_key:
             self.tokenizer = tiktoken.encoding_for_model(self.model_name)
             openai.api_key = self.openai_api_key
+            return
+        elif self.anthropic_api_key:
+            if anthropic_module is None:
+                raise ImportError("anthropic package required: pip install anthropic")
+            self.anthropic_client = anthropic_module.Anthropic(api_key=self.anthropic_api_key)
+            # No public Claude tokenizer; use cl100k_base as approximation.
+            # With 200K context this is non-critical.
+            self.tokenizer = tiktoken.get_encoding("cl100k_base")
+            print(f"Using Anthropic API for {self.model_name}")
             return
         elif (
             self.model_name
@@ -305,6 +320,59 @@ class CustomLLM(LLM):
     def completion_with_backoff(self, **kwargs):
         return openai.ChatCompletion.create(**kwargs)
 
+    @retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(10))
+    def anthropic_completion_with_backoff(self, **kwargs):
+        return self.anthropic_client.messages.create(**kwargs)
+
+    def _build_anthropic_messages(self, prompt):
+        """Parse prompt into Anthropic system + messages format.
+
+        extract_sections() returns a list of {role, content} dicts.
+        Claude API requires system as a separate parameter, and the
+        messages list must start with a user message and alternate
+        user/assistant. We merge consecutive same-role messages.
+
+        Claude 4.x does not support assistant prefilling (conversation must
+        end with a user message). The framework appends an open assistant
+        message like "Thought:" to steer output format. We move any trailing
+        assistant content into the last user message as an instruction.
+        """
+        sections = extract_sections(prompt, self.tags)
+
+        system_text = ""
+        messages = []
+        for sec in sections:
+            if sec["role"] == "system":
+                system_text += ("\n\n" + sec["content"]) if system_text else sec["content"]
+            else:
+                # Merge consecutive messages with the same role
+                if messages and messages[-1]["role"] == sec["role"]:
+                    messages[-1]["content"] += "\n" + sec["content"]
+                else:
+                    messages.append({"role": sec["role"], "content": sec["content"]})
+
+        # Claude API requires messages to start with user role.
+        if messages and messages[0]["role"] != "user":
+            messages.insert(0, {"role": "user", "content": ""})
+
+        # Claude 4.x: no assistant prefill. If last message is assistant
+        # (e.g. "Thought:" from agent scratchpad), fold it into the
+        # preceding user message as a format instruction.
+        if messages and messages[-1]["role"] == "assistant":
+            prefill = messages.pop()["content"].strip()
+            if prefill:
+                hint = f'\n\nBegin your response with exactly "{prefill}"'
+                if messages and messages[-1]["role"] == "user":
+                    messages[-1]["content"] += hint
+                else:
+                    messages.append({"role": "user", "content": hint.strip()})
+            # If popping left an empty list or consecutive same-role,
+            # ensure we still have a valid user message.
+            if not messages:
+                messages.append({"role": "user", "content": ""})
+
+        return system_text, messages
+
     def remove_input_tokens(self, output_tokens, ids):
         # Truncate the larger tensor to match the size of the smaller one
         min_size = min(output_tokens.size(1), ids.size(1))
@@ -366,6 +434,24 @@ class CustomLLM(LLM):
                 seed=self.seed,
             )
             output = response["choices"][0]["message"]["content"]
+
+        elif self.anthropic_api_key:
+            system_text, messages = self._build_anthropic_messages(prompt)
+
+            api_kwargs = dict(
+                model=self.model_name,
+                messages=messages,
+                max_tokens=4096,
+                temperature=0.0,
+            )
+            if system_text:
+                api_kwargs["system"] = system_text
+            if STOP_WORDS:
+                api_kwargs["stop_sequences"] = STOP_WORDS
+
+            response = self.anthropic_completion_with_backoff(**api_kwargs)
+            output = response.content[0].text
+
         elif self.exllama:
             with torch.inference_mode():
                 ids = self.tokenizer.encode(prompt, encode_special_tokens=True)
@@ -490,6 +576,23 @@ class CustomLLM(LLM):
                 seed=None if temperature > 0 else self.seed,
             )
             output = response["choices"][0]["message"]["content"]
+
+        elif self.anthropic_api_key:
+            system_text, messages = self._build_anthropic_messages(prompt)
+
+            api_kwargs = dict(
+                model=self.model_name,
+                messages=messages,
+                max_tokens=4096,
+                temperature=temperature,
+            )
+            if system_text:
+                api_kwargs["system"] = system_text
+            if STOP_WORDS:
+                api_kwargs["stop_sequences"] = STOP_WORDS
+
+            response = self.anthropic_completion_with_backoff(**api_kwargs)
+            output = response.content[0].text
 
         elif self.exllama:
             with torch.inference_mode():
