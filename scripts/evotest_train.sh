@@ -101,6 +101,9 @@ else
     RUN_PREFIX="evo"
 fi
 
+# Detect Python (micromamba env, MIMIC_PYTHON override, or bare python)
+source "$(dirname "$0")/_detect_python.sh"
+
 # Train on 4 original pathologies; test on all 7 (via evotest_test.sh)
 TRAIN_PATHOLOGIES=(appendicitis cholecystitis diverticulitis pancreatitis)
 
@@ -160,7 +163,7 @@ echo ""
 # Build evotest command
 # ============================================================
 EVOTEST_CMD=(
-    python "$PROJECT_DIR/scripts/evotest_clinical.py"
+    "$PYTHON" "$PROJECT_DIR/scripts/evotest_clinical.py"
     --episodes "$EPISODES"
     --model "$MODEL"
     --evolver-model "$EVOLVER_MODEL"

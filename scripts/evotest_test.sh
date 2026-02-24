@@ -69,6 +69,9 @@ LOG_DIR="$PROJECT_DIR/logs"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 LOG_FILE="$LOG_DIR/test_eval_${TIMESTAMP}.log"
 
+# Detect Python (micromamba env, MIMIC_PYTHON override, or bare python)
+source "$(dirname "$0")/_detect_python.sh"
+
 BASE_MODELS="${HF_HOME:-${HOME}/.cache/huggingface/hub}"
 LAB_TEST_MAPPING="$PROJECT_DIR/MIMIC-CDM-IV/lab_test_mapping.pkl"
 PATHOLOGIES=("appendicitis" "cholecystitis" "diverticulitis" "pancreatitis" "cholangitis" "bowel_obstruction" "pyelonephritis")
@@ -169,7 +172,7 @@ run_baseline_pathology() {
     local P="$1"
     cd "$FRAMEWORK_DIR"
     local CMD=(
-        python run.py
+        "$PYTHON" run.py
         pathology="$P"
         model="$MODEL"
         agent="$AGENT"
@@ -232,14 +235,14 @@ for P in "${PATHOLOGIES[@]}"; do
 
     echo ""
     echo "--- Evaluate baseline: $P ---"
-    python "$PROJECT_DIR/scripts/evaluate_run.py" \
+    "$PYTHON" "$PROJECT_DIR/scripts/evaluate_run.py" \
         --results_dir "${BASELINE_RUN_DIRS[$P]}" \
         --pathology "$P" \
         --patient_data "$PATIENT_DATA" \
         || die "Baseline evaluation failed for $P"
 
     echo "--- Extract baseline trajectories: $P ---"
-    python "$PROJECT_DIR/scripts/extract_trajectories.py" \
+    "$PYTHON" "$PROJECT_DIR/scripts/extract_trajectories.py" \
         --results_dir "${BASELINE_RUN_DIRS[$P]}" \
         --pathology "$P" \
         --patient_data "$PATIENT_DATA" \
@@ -261,7 +264,7 @@ run_skill_pathology() {
     local P="$1"
     cd "$FRAMEWORK_DIR"
     local CMD=(
-        python run.py
+        "$PYTHON" run.py
         pathology="$P"
         model="$MODEL"
         agent="$AGENT"
@@ -326,14 +329,14 @@ for P in "${PATHOLOGIES[@]}"; do
 
     echo ""
     echo "--- Evaluate skill: $P ---"
-    python "$PROJECT_DIR/scripts/evaluate_run.py" \
+    "$PYTHON" "$PROJECT_DIR/scripts/evaluate_run.py" \
         --results_dir "${SKILL_RUN_DIRS[$P]}" \
         --pathology "$P" \
         --patient_data "$PATIENT_DATA" \
         || die "Skill evaluation failed for $P"
 
     echo "--- Extract skill trajectories: $P ---"
-    python "$PROJECT_DIR/scripts/extract_trajectories.py" \
+    "$PYTHON" "$PROJECT_DIR/scripts/extract_trajectories.py" \
         --results_dir "${SKILL_RUN_DIRS[$P]}" \
         --pathology "$P" \
         --patient_data "$PATIENT_DATA" \
@@ -341,7 +344,7 @@ for P in "${PATHOLOGIES[@]}"; do
         || die "Skill trajectory extraction failed for $P"
 
     echo "--- Compare baseline vs skill: $P ---"
-    python "$PROJECT_DIR/scripts/compare_runs.py" \
+    "$PYTHON" "$PROJECT_DIR/scripts/compare_runs.py" \
         --baseline "$BASELINE_TRAJ" \
         --evolved "$SKILL_TRAJ" \
         --output "$COMPARISON" \

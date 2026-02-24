@@ -25,7 +25,7 @@ PROJECT="${MIMIC_PROJECT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 VLLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 VLLM_TP="${VLLM_TP:-1}"
-VLLM_GPU_UTIL=0.9
+VLLM_GPU_UTIL=0.95
 VLLM_MAX_LEN=32768
 VLLM_PORT=8000
 
@@ -33,6 +33,13 @@ VLLM_EXTRA_ARGS=""
 if [ "${1:-}" = "--tool-call" ]; then
     VLLM_EXTRA_ARGS="--enable-auto-tool-choice --tool-call-parser hermes"
 fi
+
+# GH200 performance tuning
+VLLM_EXTRA_ARGS="$VLLM_EXTRA_ARGS \
+    --enable-prefix-caching \
+    --enable-chunked-prefill \
+    --max-num-batched-tokens 16384 \
+    --kv-cache-dtype fp8_e4m3"
 
 # Preflight
 [ -f "$SIF" ]     || { echo "ERROR: SIF not found: $SIF"; exit 1; }
@@ -59,11 +66,19 @@ echo "    bash scripts/container.sh evotest 10"
 echo "============================================================"
 echo ""
 
+# Bind-mount GH200-tuned MoE kernel configs (copied from H200)
+MOE_CONFIGS_BIND=""
+if [ -d "$PROJECT/moe_configs" ]; then
+    MOE_CONFIGS_BIND="--bind $PROJECT/moe_configs:/usr/local/lib/python3.12/dist-packages/vllm/model_executor/layers/fused_moe/configs"
+    echo "  MoE configs: GH200-tuned (from H200)"
+fi
+
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}" \
 apptainer exec --nv --fakeroot \
     --overlay "$OVERLAY"${OVERLAY_MOUNT:+:$OVERLAY_MOUNT} \
     --bind "$HF_CACHE":/root/.cache/huggingface \
     --bind "$PROJECT":/workspace \
+    $MOE_CONFIGS_BIND \
     "$SIF" \
     python -m vllm.entrypoints.openai.api_server \
         --model "$VLLM_MODEL" \

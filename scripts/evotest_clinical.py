@@ -417,7 +417,7 @@ class ClinicalEvoTest:
 
         # --- 1. Run agent ---
         run_cmd = [
-            "python", "run.py",
+            sys.executable, "run.py",
             f"pathology={pathology}",
             f"model={self.args.model}",
             f"base_mimic={self.data_dir / pathology}",
@@ -462,7 +462,7 @@ class ClinicalEvoTest:
         # --- 3. Evaluate ---
         ok = run_subprocess(
             [
-                "python", str(SCRIPTS_DIR / "evaluate_run.py"),
+                sys.executable, str(SCRIPTS_DIR / "evaluate_run.py"),
                 "--results_dir", results_subdir,
                 "--pathology", pathology,
                 "--patient_data", str(patient_data),
@@ -477,7 +477,7 @@ class ClinicalEvoTest:
         traj_output = self.traj_dir / f"{self._run_prefix}_ep{episode_num}_{pathology}.json"
         ok = run_subprocess(
             [
-                "python", str(SCRIPTS_DIR / "extract_trajectories.py"),
+                sys.executable, str(SCRIPTS_DIR / "extract_trajectories.py"),
                 "--results_dir", results_subdir,
                 "--pathology", pathology,
                 "--patient_data", str(patient_data),
