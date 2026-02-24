@@ -12,6 +12,7 @@ set -euo pipefail
 #
 # Flags:
 #   --no-patient-sim         Disable patient simulator
+#   --include-remaining      Also run on remaining.pkl (all non-train patients)
 #   --skill PATH             Inject skill from SKILL.md file
 #   --skill-inject MODE      Skill injection mode: examples|system|both (default: examples)
 #   --annotate-clinical      Enable lab result annotations (Approach 3)
@@ -20,7 +21,8 @@ set -euo pipefail
 #   --dry-run                Print commands without executing
 #
 # Examples:
-#   bash scripts/cloud_baseline.sh                                  # all 3 default models
+#   bash scripts/cloud_baseline.sh                                  # test only, 3 default models
+#   bash scripts/cloud_baseline.sh --include-remaining              # test + remaining (all non-train)
 #   bash scripts/cloud_baseline.sh GPT5mini ClaudeHaiku             # specific models
 #   bash scripts/cloud_baseline.sh --skill skills/v1/skill.md       # with skill injection
 #   bash scripts/cloud_baseline.sh --pathology appendicitis GPT5mini  # one pathology
@@ -38,6 +40,7 @@ set -euo pipefail
 # --- Defaults ---
 PATIENT_SIMULATOR="True"
 PATSIM_SUFFIX="_patsim"
+INCLUDE_REMAINING=false
 SKILL_PATH=""
 SKILL_INJECT="examples"
 ANNOTATE_CLINICAL="False"
@@ -53,6 +56,8 @@ while [[ "${1:-}" == --* ]]; do
             PATIENT_SIMULATOR="False"
             PATSIM_SUFFIX=""
             shift ;;
+        --include-remaining)
+            INCLUDE_REMAINING=true; shift ;;
         --skill)
             SKILL_PATH="${2:?--skill requires a path}"
             shift 2 ;;
@@ -123,6 +128,36 @@ for P in "${PATHOLOGIES[@]}"; do
     [ -f "$DATA_DIR/$P/test.pkl" ] || die "Test data not found: $DATA_DIR/$P/test.pkl"
 done
 
+# --- Merge test + remaining if requested ---
+# Creates a combined pkl per pathology (excludes only train.pkl)
+if [ "$INCLUDE_REMAINING" = true ]; then
+    MERGED_DIR="$DATA_DIR/_merged"
+    mkdir -p "$MERGED_DIR"
+    for P in "${PATHOLOGIES[@]}"; do
+        MERGED_PKL="$MERGED_DIR/${P}_test_remaining.pkl"
+        if [ ! -f "$MERGED_PKL" ] || [ "$DATA_DIR/$P/test.pkl" -nt "$MERGED_PKL" ]; then
+            python3 -c "
+import pickle, sys
+merged = {}
+for split in ['test', 'remaining']:
+    path = '$DATA_DIR/$P/' + split + '.pkl'
+    try:
+        with open(path, 'rb') as f:
+            data = pickle.load(f)
+        merged.update(data)
+    except FileNotFoundError:
+        pass
+with open('$MERGED_PKL', 'wb') as f:
+    pickle.dump(merged, f)
+print(f'  Merged $P: {len(merged)} patients (test + remaining)')
+" || die "Failed to merge pkls for $P"
+        fi
+    done
+    DATA_SUFFIX="_all"
+else
+    DATA_SUFFIX="_test"
+fi
+
 # Validate skill path if provided
 if [ -n "$SKILL_PATH" ]; then
     # Resolve relative paths from project dir
@@ -146,12 +181,28 @@ if [ "$ANNOTATE_CLINICAL" = "True" ]; then
     ANNOT_SUFFIX="_CLANNOT"
 fi
 
+# --- Helper to get data file for a pathology ---
+get_data_file() {
+    local P="$1"
+    if [ "$INCLUDE_REMAINING" = true ]; then
+        echo "$MERGED_DIR/${P}_test_remaining.pkl"
+    else
+        echo "$DATA_DIR/$P/test.pkl"
+    fi
+}
+
+DATA_LABEL="test only"
+if [ "$INCLUDE_REMAINING" = true ]; then
+    DATA_LABEL="test + remaining (all non-train)"
+fi
+
 echo "============================================================"
-echo " CLOUD BASELINE: ZeroShot on all test cases"
+echo " CLOUD BASELINE: ZeroShot on ${DATA_LABEL}"
 echo "============================================================"
 echo ""
 echo "  Models:            ${MODELS[*]}"
 echo "  Pathologies:       ${PATHOLOGIES[*]}"
+echo "  Data:              $DATA_LABEL"
 echo "  Patient Simulator: $PATIENT_SIMULATOR"
 echo "  Skill:             $SKILL_DESCR"
 echo "  Annotate Clinical: $ANNOTATE_CLINICAL"
@@ -161,7 +212,7 @@ echo ""
 # Count total patients
 TOTAL_PATIENTS=0
 for P in "${PATHOLOGIES[@]}"; do
-    N=$(count_patients "$DATA_DIR/$P/test.pkl")
+    N=$(count_patients "$(get_data_file "$P")")
     echo "  $P: $N patients"
     TOTAL_PATIENTS=$((TOTAL_PATIENTS + N))
 done
@@ -178,15 +229,17 @@ fi
 run_model_pathology() {
     local MODEL="$1"
     local P="$2"
-    local N=$(count_patients "$DATA_DIR/$P/test.pkl")
-    local DESCR="_cloud_baseline${PATSIM_SUFFIX}${SKILL_SUFFIX}${ANNOT_SUFFIX}"
+    local DATA_FILE
+    DATA_FILE=$(get_data_file "$P")
+    local N=$(count_patients "$DATA_FILE")
+    local DESCR="_cloud_baseline${DATA_SUFFIX}${PATSIM_SUFFIX}${SKILL_SUFFIX}${ANNOT_SUFFIX}"
 
     local CMD=(
         python run.py
         pathology="$P"
         model="$MODEL"
         agent=ZeroShot
-        data_file="$DATA_DIR/$P/test.pkl"
+        data_file="$DATA_FILE"
         base_mimic="$DATA_DIR/$P"
         lab_test_mapping_path="$LAB_TEST_MAPPING"
         local_logging_dir="$RESULTS_DIR"
@@ -260,13 +313,13 @@ if [ "$DRY_RUN" = false ]; then
     echo "  Evaluating all runs"
     echo "============================================================"
 
-    DESCR="_cloud_baseline${PATSIM_SUFFIX}${SKILL_SUFFIX}${ANNOT_SUFFIX}"
+    DESCR="_cloud_baseline${DATA_SUFFIX}${PATSIM_SUFFIX}${SKILL_SUFFIX}${ANNOT_SUFFIX}"
     for MODEL in "${MODELS[@]}"; do
         for P in "${PATHOLOGIES[@]}"; do
-            RUN_DIR=$(ls -td "$RESULTS_DIR"/*"${P}"*"${MODEL}"*"${DESCR}"* 2>/dev/null | head -1)
+            EVAL_DATA=$(get_data_file "$P")
+            RUN_DIR=$(ls -td "$RESULTS_DIR"/*"${P}"*"${DESCR}"* 2>/dev/null | grep -i "${MODEL}" | head -1 || true)
             if [ -z "$RUN_DIR" ]; then
-                # Try matching with model_name instead of config name
-                RUN_DIR=$(ls -td "$RESULTS_DIR"/*"${P}"*"${DESCR}"* 2>/dev/null | grep -i "${MODEL}" | head -1 || true)
+                RUN_DIR=$(ls -td "$RESULTS_DIR"/*"${P}"*"${MODEL}"*"${DESCR}"* 2>/dev/null | head -1)
             fi
             if [ -n "$RUN_DIR" ]; then
                 echo ""
@@ -274,14 +327,14 @@ if [ "$DRY_RUN" = false ]; then
                 python "$PROJECT_DIR/scripts/evaluate_run.py" \
                     --results_dir "$RUN_DIR" \
                     --pathology "$P" \
-                    --patient_data "$DATA_DIR/$P/test.pkl" \
+                    --patient_data "$EVAL_DATA" \
                     || echo "  WARNING: Evaluation failed for $MODEL / $P"
 
-                TRAJ_FILE="$TRAJ_DIR/cloud_${MODEL}${PATSIM_SUFFIX}${SKILL_SUFFIX}${ANNOT_SUFFIX}_${P}.json"
+                TRAJ_FILE="$TRAJ_DIR/cloud_${MODEL}${DATA_SUFFIX}${PATSIM_SUFFIX}${SKILL_SUFFIX}${ANNOT_SUFFIX}_${P}.json"
                 python "$PROJECT_DIR/scripts/extract_trajectories.py" \
                     --results_dir "$RUN_DIR" \
                     --pathology "$P" \
-                    --patient_data "$DATA_DIR/$P/test.pkl" \
+                    --patient_data "$EVAL_DATA" \
                     --output "$TRAJ_FILE" \
                     || echo "  WARNING: Trajectory extraction failed for $MODEL / $P"
             else
@@ -304,6 +357,7 @@ echo "============================================================"
 echo ""
 echo "  Models:        ${MODELS[*]}"
 echo "  Pathologies:   ${PATHOLOGIES[*]}"
+echo "  Data:          $DATA_LABEL"
 echo "  Total patients: $TOTAL_PATIENTS × ${#MODELS[@]} models"
 echo "  Duration:      ${TOTAL_HR}h ${TOTAL_MIN}m ${TOTAL_SEC}s"
 echo "  Skill:         $SKILL_DESCR"
@@ -313,10 +367,10 @@ echo "  Results directory: $RESULTS_DIR"
 echo "  Trajectory files:  $TRAJ_DIR/cloud_*"
 echo "  Logs:              $LOG_DIR/cloud_*_${TIMESTAMP}.log"
 echo ""
-echo "  Cost estimates (approximate):"
-echo "    GPT5mini:     ~\$6   for 706 patients"
-echo "    ClaudeHaiku:  ~\$4   for 706 patients"
-echo "    ClaudeSonnet: ~\$20  for 706 patients"
-echo "    GPT5.2:       ~\$44  for 706 patients"
-echo "    ClaudeOpus:   ~\$98  for 706 patients"
+echo "  Cost estimates (approximate, per-patient × $TOTAL_PATIENTS):"
+echo "    GPT5mini:     ~\$$(( TOTAL_PATIENTS * 9 / 1000 ))   (\$0.009/patient)"
+echo "    ClaudeHaiku:  ~\$$(( TOTAL_PATIENTS * 6 / 1000 ))   (\$0.006/patient)"
+echo "    ClaudeSonnet: ~\$$(( TOTAL_PATIENTS * 28 / 1000 ))  (\$0.028/patient)"
+echo "    GPT5.2:       ~\$$(( TOTAL_PATIENTS * 63 / 1000 ))  (\$0.063/patient)"
+echo "    ClaudeOpus:   ~\$$(( TOTAL_PATIENTS * 139 / 1000 )) (\$0.139/patient)"
 echo "============================================================"
