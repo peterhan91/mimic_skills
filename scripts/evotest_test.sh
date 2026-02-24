@@ -18,6 +18,7 @@ set -euo pipefail
 #   --tot-breadth N          ToT frontier size
 #   --tot-n-generate N       ToT candidates per step
 #   --tot-temperature F      ToT generation temperature
+#   --parallel-pathologies   Run pathologies in parallel (all 7 at once)
 #
 # Examples:
 #   bash scripts/evotest_test.sh skills/evo/episode_5.md
@@ -35,6 +36,7 @@ set -euo pipefail
 
 AGENT="ZeroShot"
 PATIENT_SIMULATOR="True"
+PARALLEL_PATHOLOGIES=false
 TOT_ARGS=()
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
@@ -42,6 +44,8 @@ while [[ "${1:-}" == --* ]]; do
             AGENT="${2:?--agent requires a value (ZeroShot or ToT)}"; shift 2 ;;
         --no-patient-sim)
             PATIENT_SIMULATOR="False"; shift ;;
+        --parallel-pathologies)
+            PARALLEL_PATHOLOGIES=true; shift ;;
         --tot-max-depth|--tot-breadth|--tot-n-generate|--tot-temperature)
             # Convert --tot-max-depth → tot_max_depth= for Hydra
             KEY=$(echo "${1#--}" | tr '-' '_')
@@ -161,12 +165,10 @@ phase_start 1 "Baseline run (no skill, test set, all pathologies)"
 declare -A BASELINE_RUN_DIRS
 BASELINE_DESCR="_${TEST_PREFIX}_baseline_test100"
 
-for P in "${PATHOLOGIES[@]}"; do
-    echo ""
-    echo "--- Baseline: $P (100 patients) ---"
-
+run_baseline_pathology() {
+    local P="$1"
     cd "$FRAMEWORK_DIR"
-    BASELINE_CMD=(
+    local CMD=(
         python run.py
         pathology="$P"
         model="$MODEL"
@@ -182,10 +184,35 @@ for P in "${PATHOLOGIES[@]}"; do
         "${TOT_ARGS[@]+"${TOT_ARGS[@]}"}"
     )
     if [ "$PATIENT_SIMULATOR" = "True" ]; then
-        BASELINE_CMD+=(patient_simulator=True)
+        CMD+=(patient_simulator=True)
     fi
-    "${BASELINE_CMD[@]}" || die "Baseline run failed for $P"
+    "${CMD[@]}"
+}
 
+if [ "$PARALLEL_PATHOLOGIES" = true ]; then
+    echo "  Running ${#PATHOLOGIES[@]} pathologies in parallel"
+    declare -A BASELINE_PIDS
+    for P in "${PATHOLOGIES[@]}"; do
+        echo "  Starting baseline: $P"
+        run_baseline_pathology "$P" > "$LOG_DIR/baseline_${P}_${TIMESTAMP}.log" 2>&1 &
+        BASELINE_PIDS[$P]=$!
+    done
+    # Wait for all and check exit codes
+    for P in "${PATHOLOGIES[@]}"; do
+        if ! wait "${BASELINE_PIDS[$P]}"; then
+            die "Baseline run failed for $P (see $LOG_DIR/baseline_${P}_${TIMESTAMP}.log)"
+        fi
+        echo "  Completed baseline: $P"
+    done
+else
+    for P in "${PATHOLOGIES[@]}"; do
+        echo ""
+        echo "--- Baseline: $P (100 patients) ---"
+        run_baseline_pathology "$P" || die "Baseline run failed for $P"
+    done
+fi
+
+for P in "${PATHOLOGIES[@]}"; do
     BASELINE_RUN_DIR=$(ls -td "$RESULTS_DIR"/*"$P"*"$BASELINE_DESCR"* 2>/dev/null | head -1)
     [ -n "$BASELINE_RUN_DIR" ] || die "Could not find baseline results for $P"
     BASELINE_RUN_DIRS[$P]="$BASELINE_RUN_DIR"
@@ -230,12 +257,10 @@ phase_start 3 "Best skill run (test set, all pathologies)"
 declare -A SKILL_RUN_DIRS
 SKILL_DESCR="_${TEST_PREFIX}_evotest_best_test100"
 
-for P in "${PATHOLOGIES[@]}"; do
-    echo ""
-    echo "--- Best skill: $P (100 patients) ---"
-
+run_skill_pathology() {
+    local P="$1"
     cd "$FRAMEWORK_DIR"
-    SKILL_CMD=(
+    local CMD=(
         python run.py
         pathology="$P"
         model="$MODEL"
@@ -252,10 +277,34 @@ for P in "${PATHOLOGIES[@]}"; do
         "${TOT_ARGS[@]+"${TOT_ARGS[@]}"}"
     )
     if [ "$PATIENT_SIMULATOR" = "True" ]; then
-        SKILL_CMD+=(patient_simulator=True)
+        CMD+=(patient_simulator=True)
     fi
-    "${SKILL_CMD[@]}" || die "Skill run failed for $P"
+    "${CMD[@]}"
+}
 
+if [ "$PARALLEL_PATHOLOGIES" = true ]; then
+    echo "  Running ${#PATHOLOGIES[@]} pathologies in parallel"
+    declare -A SKILL_PIDS
+    for P in "${PATHOLOGIES[@]}"; do
+        echo "  Starting skill run: $P"
+        run_skill_pathology "$P" > "$LOG_DIR/skill_${P}_${TIMESTAMP}.log" 2>&1 &
+        SKILL_PIDS[$P]=$!
+    done
+    for P in "${PATHOLOGIES[@]}"; do
+        if ! wait "${SKILL_PIDS[$P]}"; then
+            die "Skill run failed for $P (see $LOG_DIR/skill_${P}_${TIMESTAMP}.log)"
+        fi
+        echo "  Completed skill run: $P"
+    done
+else
+    for P in "${PATHOLOGIES[@]}"; do
+        echo ""
+        echo "--- Best skill: $P (100 patients) ---"
+        run_skill_pathology "$P" || die "Skill run failed for $P"
+    done
+fi
+
+for P in "${PATHOLOGIES[@]}"; do
     SKILL_RUN_DIR=$(ls -td "$RESULTS_DIR"/*"$P"*"$SKILL_DESCR"* 2>/dev/null | head -1)
     [ -n "$SKILL_RUN_DIR" ] || die "Could not find skill results for $P"
     SKILL_RUN_DIRS[$P]="$SKILL_RUN_DIR"

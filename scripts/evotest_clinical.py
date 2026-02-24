@@ -25,6 +25,9 @@ Usage:
     # Dry run (prints Evolver prompt, no API calls or agent runs):
     python scripts/evotest_clinical.py --dry-run --episodes 1
 
+    # Parallel pathologies (run all pathologies concurrently per episode):
+    python scripts/evotest_clinical.py --parallel-pathologies --episodes 10
+
 Requires: ANTHROPIC_API_KEY environment variable (for Evolver).
 """
 
@@ -37,6 +40,7 @@ import os
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -399,6 +403,94 @@ class ClinicalEvoTest:
     # ------------------------------------------------------------------
     # Episode Orchestration
     # ------------------------------------------------------------------
+    def _run_pathology_pipeline(self, pathology, episode_num, descr, skill_file):
+        """Run agent → evaluate → extract for a single pathology.
+
+        Returns (pathology, traj_path, traj_data) on success, or
+        (pathology, None, error_msg) on failure.
+        For dry runs returns (pathology, dry_run_path, None).
+        """
+        patient_data = self.data_dir / pathology / f"{DEFAULT_SPLIT}.pkl"
+        if not patient_data.exists():
+            logger.warning(f"  {patient_data} not found, skipping {pathology}")
+            return (pathology, None, "data_not_found")
+
+        # --- 1. Run agent ---
+        run_cmd = [
+            "python", "run.py",
+            f"pathology={pathology}",
+            f"model={self.args.model}",
+            f"base_mimic={self.data_dir / pathology}",
+            f"base_models={self.base_models}",
+            f"lab_test_mapping_path={self.lab_test_mapping}",
+            f"local_logging_dir={self.results_dir}",
+            "summarize=True",
+            f"annotate_clinical={self.args.annotate_clinical}",
+            f"run_descr={descr}",
+        ]
+        if self.args.patient_simulator.lower() == "true":
+            run_cmd.append("patient_simulator=True")
+        if skill_file:
+            run_cmd.append(f"skill_path={skill_file}")
+        if self.agent_type != "ZeroShot":
+            run_cmd.append(f"agent={self.agent_type}")
+        if self.agent_type == "ToT":
+            for key in ("tot_n_generate", "tot_breadth", "tot_max_depth",
+                        "tot_temperature", "tot_eval_temperature"):
+                val = getattr(self.args, key, None)
+                if val is not None:
+                    run_cmd.append(f"{key}={val}")
+
+        ok = run_subprocess(
+            run_cmd,
+            f"run.py {pathology} ep{episode_num}",
+            cwd=str(FRAMEWORK_DIR),
+            dry_run=self.args.dry_run,
+        )
+        if not ok:
+            return (pathology, None, f"agent run failed for {pathology}")
+
+        # --- 2. Find results dir ---
+        results_subdir = find_latest_results_dir(self.results_dir, pathology, descr)
+        if not results_subdir and not self.args.dry_run:
+            return (pathology, None, f"no results dir found for {pathology}{descr}")
+
+        if self.args.dry_run:
+            dry_path = f"(dry-run) trajectories/{self._run_prefix}_ep{episode_num}_{pathology}.json"
+            return (pathology, dry_path, None)
+
+        # --- 3. Evaluate ---
+        ok = run_subprocess(
+            [
+                "python", str(SCRIPTS_DIR / "evaluate_run.py"),
+                "--results_dir", results_subdir,
+                "--pathology", pathology,
+                "--patient_data", str(patient_data),
+            ],
+            f"evaluate {pathology}",
+        )
+        if not ok:
+            return (pathology, None, f"evaluation failed for {pathology}")
+
+        # --- 4. Extract trajectories ---
+        self.traj_dir.mkdir(parents=True, exist_ok=True)
+        traj_output = self.traj_dir / f"{self._run_prefix}_ep{episode_num}_{pathology}.json"
+        ok = run_subprocess(
+            [
+                "python", str(SCRIPTS_DIR / "extract_trajectories.py"),
+                "--results_dir", results_subdir,
+                "--pathology", pathology,
+                "--patient_data", str(patient_data),
+                "--output", str(traj_output),
+            ],
+            f"extract {pathology}",
+        )
+        if not ok:
+            return (pathology, None, f"trajectory extraction failed for {pathology}")
+
+        data = load_trajectories(str(traj_output))
+        return (pathology, str(traj_output), data)
+
     def run_episode(self, skill_text, episode_num):
         """Run agent on all pathologies with given skill, evaluate, extract, score.
 
@@ -421,92 +513,55 @@ class ClinicalEvoTest:
         trajectory_paths = []
         all_trajectory_data = []
 
-        for pathology in self.pathologies:
-            patient_data = self.data_dir / pathology / f"{DEFAULT_SPLIT}.pkl"
-            if not patient_data.exists():
-                logger.warning(f"  {patient_data} not found, skipping {pathology}")
-                continue
+        parallel = getattr(self.args, "parallel_pathologies", False)
+        n_workers = len(self.pathologies) if parallel else 1
 
-            # --- 1. Run agent ---
-            run_cmd = [
-                "python", "run.py",
-                f"pathology={pathology}",
-                f"model={self.args.model}",
-                f"base_mimic={self.data_dir / pathology}",
-                f"base_models={self.base_models}",
-                f"lab_test_mapping_path={self.lab_test_mapping}",
-                f"local_logging_dir={self.results_dir}",
-                "summarize=True",
-                f"annotate_clinical={self.args.annotate_clinical}",
-                f"run_descr={descr}",
-            ]
-            if self.args.patient_simulator.lower() == "true":
-                run_cmd.append("patient_simulator=True")
-            if skill_file:
-                run_cmd.append(f"skill_path={skill_file}")
-            if self.agent_type != "ZeroShot":
-                run_cmd.append(f"agent={self.agent_type}")
-            if self.agent_type == "ToT":
-                for key in ("tot_n_generate", "tot_breadth", "tot_max_depth",
-                            "tot_temperature", "tot_eval_temperature"):
-                    val = getattr(self.args, key, None)
-                    if val is not None:
-                        run_cmd.append(f"{key}={val}")
+        if parallel and n_workers > 1:
+            logger.info(f"  Running {n_workers} pathologies in parallel")
+            with ThreadPoolExecutor(max_workers=n_workers) as executor:
+                futures = {
+                    executor.submit(
+                        self._run_pathology_pipeline, p, episode_num, descr, skill_file
+                    ): p
+                    for p in self.pathologies
+                }
+                results = {}
+                for future in as_completed(futures):
+                    pathology, traj_path, traj_data = future.result()
+                    results[pathology] = (traj_path, traj_data)
 
-            ok = run_subprocess(
-                run_cmd,
-                f"run.py {pathology} ep{episode_num}",
-                cwd=str(FRAMEWORK_DIR),
-                dry_run=self.args.dry_run,
-            )
-            if not ok:
-                logger.error(f"  Agent run failed for {pathology}, aborting episode")
-                return None
-
-            # --- 2. Find results dir ---
-            results_subdir = find_latest_results_dir(self.results_dir, pathology, descr)
-            if not results_subdir and not self.args.dry_run:
-                logger.error(f"  No results dir found for {pathology}{descr}")
-                return None
-
-            if self.args.dry_run:
-                trajectory_paths.append(f"(dry-run) trajectories/{self._run_prefix}_ep{episode_num}_{pathology}.json")
-                continue
-
-            # --- 3. Evaluate ---
-            ok = run_subprocess(
-                [
-                    "python", str(SCRIPTS_DIR / "evaluate_run.py"),
-                    "--results_dir", results_subdir,
-                    "--pathology", pathology,
-                    "--patient_data", str(patient_data),
-                ],
-                f"evaluate {pathology}",
-            )
-            if not ok:
-                logger.error(f"  Evaluation failed for {pathology}, aborting episode")
-                return None
-
-            # --- 4. Extract trajectories ---
-            self.traj_dir.mkdir(parents=True, exist_ok=True)
-            traj_output = self.traj_dir / f"{self._run_prefix}_ep{episode_num}_{pathology}.json"
-            ok = run_subprocess(
-                [
-                    "python", str(SCRIPTS_DIR / "extract_trajectories.py"),
-                    "--results_dir", results_subdir,
-                    "--pathology", pathology,
-                    "--patient_data", str(patient_data),
-                    "--output", str(traj_output),
-                ],
-                f"extract {pathology}",
-            )
-            if not ok:
-                logger.error(f"  Trajectory extraction failed for {pathology}")
-                return None
-
-            trajectory_paths.append(str(traj_output))
-            data = load_trajectories(str(traj_output))
-            all_trajectory_data.append(data)
+            # Collect results in original pathology order
+            for pathology in self.pathologies:
+                if pathology not in results:
+                    continue
+                traj_path, traj_data = results[pathology]
+                if traj_path is None:
+                    if traj_data == "data_not_found":
+                        continue
+                    # traj_data contains the error message
+                    logger.error(f"  {traj_data}, aborting episode")
+                    return None
+                if traj_data is None and self.args.dry_run:
+                    trajectory_paths.append(traj_path)
+                else:
+                    trajectory_paths.append(traj_path)
+                    all_trajectory_data.append(traj_data)
+        else:
+            # Sequential execution (original behavior)
+            for pathology in self.pathologies:
+                pathology_name, traj_path, traj_data = self._run_pathology_pipeline(
+                    pathology, episode_num, descr, skill_file
+                )
+                if traj_path is None:
+                    if traj_data == "data_not_found":
+                        continue
+                    logger.error(f"  {traj_data}, aborting episode")
+                    return None
+                if traj_data is None and self.args.dry_run:
+                    trajectory_paths.append(traj_path)
+                else:
+                    trajectory_paths.append(traj_path)
+                    all_trajectory_data.append(traj_data)
 
         if self.args.dry_run:
             return 0.0, {}, {}, trajectory_paths
@@ -1130,6 +1185,11 @@ def main():
     parser.add_argument(
         "--tot-eval-temperature", type=float, default=None, dest="tot_eval_temperature",
         help="ToT: temperature for path evaluation (default: from config)"
+    )
+    parser.add_argument(
+        "--parallel-pathologies", action="store_true",
+        help="Run pathologies in parallel within each episode (each pathology "
+             "is a separate subprocess, safe for Strategy B)"
     )
     parser.add_argument(
         "--dry-run", action="store_true",

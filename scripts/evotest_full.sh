@@ -15,10 +15,12 @@ set -euo pipefail
 #   --tot-breadth N          ToT frontier size
 #   --tot-n-generate N       ToT candidates per step
 #   --tot-temperature F      ToT generation temperature
+#   --parallel-pathologies   Run pathologies in parallel within each episode
 #
 # Examples:
 #   bash scripts/evotest_full.sh --agent ToT 10 Qwen3_30B_A3B
 #   bash scripts/evotest_full.sh --agent ToT --tot-max-depth 15 10
+#   bash scripts/evotest_full.sh --parallel-pathologies 10 Qwen3_30B_A3B
 #   bash scripts/evotest_full.sh --resume 10 Qwen3_30B_A3B
 # ============================================================
 
@@ -28,6 +30,7 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 RESUME_FLAG=()
 AGENT_FLAG=()
 PATSIM_FLAG=()
+PARALLEL_FLAG=()
 TOT_FLAGS=()
 AGENT="ZeroShot"
 PATIENT_SIMULATOR="True"
@@ -41,6 +44,8 @@ while [[ "${1:-}" == --* ]]; do
         --no-patient-sim)
             PATIENT_SIMULATOR="False"
             PATSIM_FLAG=(--no-patient-sim); shift ;;
+        --parallel-pathologies)
+            PARALLEL_FLAG=(--parallel-pathologies); shift ;;
         --tot-max-depth|--tot-breadth|--tot-n-generate|--tot-temperature)
             TOT_FLAGS+=("$1" "${2:?$1 requires a value}"); shift 2 ;;
         *)
@@ -89,6 +94,7 @@ bash "$PROJECT_DIR/scripts/evotest_train.sh" \
     "${RESUME_FLAG[@]+"${RESUME_FLAG[@]}"}" \
     "${AGENT_FLAG[@]+"${AGENT_FLAG[@]}"}" \
     "${PATSIM_FLAG[@]+"${PATSIM_FLAG[@]}"}" \
+    "${PARALLEL_FLAG[@]+"${PARALLEL_FLAG[@]}"}" \
     "${TOT_FLAGS[@]+"${TOT_FLAGS[@]}"}" \
     "$EPISODES" "$MODEL" "$EVOLVER_MODEL" "$ANNOTATE_CLINICAL"
 
@@ -134,6 +140,7 @@ echo ""
 bash "$PROJECT_DIR/scripts/evotest_test.sh" \
     "${AGENT_FLAG[@]+"${AGENT_FLAG[@]}"}" \
     "${PATSIM_FLAG[@]+"${PATSIM_FLAG[@]}"}" \
+    "${PARALLEL_FLAG[@]+"${PARALLEL_FLAG[@]}"}" \
     "${TOT_FLAGS[@]+"${TOT_FLAGS[@]}"}" \
     "$BEST_SKILL" "$MODEL" "$ANNOTATE_CLINICAL"
 

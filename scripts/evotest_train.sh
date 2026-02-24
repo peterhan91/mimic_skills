@@ -24,6 +24,7 @@ set -euo pipefail
 #   --tot-breadth N          ToT frontier size
 #   --tot-n-generate N       ToT candidates per step
 #   --tot-temperature F      ToT generation temperature
+#   --parallel-pathologies   Run pathologies in parallel within each episode
 #
 # Examples:
 #   bash scripts/evotest_train.sh                                    # 10 episodes, defaults
@@ -47,6 +48,7 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 RESUME=false
 AGENT="ZeroShot"
 PATIENT_SIMULATOR="True"
+PARALLEL_PATHOLOGIES=false
 TOT_MAX_DEPTH=""
 TOT_BREADTH=""
 TOT_N_GENERATE=""
@@ -59,6 +61,8 @@ while [[ "${1:-}" == --* ]]; do
             AGENT="${2:?--agent requires a value (ZeroShot or ToT)}"; shift 2 ;;
         --no-patient-sim)
             PATIENT_SIMULATOR="False"; shift ;;
+        --parallel-pathologies)
+            PARALLEL_PATHOLOGIES=true; shift ;;
         --tot-max-depth)
             TOT_MAX_DEPTH="${2:?--tot-max-depth requires a value}"; shift 2 ;;
         --tot-breadth)
@@ -116,6 +120,7 @@ echo "  Model:             $MODEL"
 echo "  Evolver:           $EVOLVER_MODEL"
 echo "  Annotate Clinical: $ANNOTATE_CLINICAL"
 echo "  Patient Simulator: $PATIENT_SIMULATOR"
+echo "  Parallel Patho.:  $PARALLEL_PATHOLOGIES"
 echo "  Resume:            $RESUME"
 if [ -n "$INITIAL_SKILL" ]; then
 echo "  Initial Skill:     $INITIAL_SKILL"
@@ -187,6 +192,9 @@ fi
 [ -n "$TOT_BREADTH" ]    && EVOTEST_CMD+=(--tot-breadth "$TOT_BREADTH")
 [ -n "$TOT_N_GENERATE" ] && EVOTEST_CMD+=(--tot-n-generate "$TOT_N_GENERATE")
 [ -n "$TOT_TEMPERATURE" ] && EVOTEST_CMD+=(--tot-temperature "$TOT_TEMPERATURE")
+
+# Parallel pathologies
+[ "$PARALLEL_PATHOLOGIES" = true ] && EVOTEST_CMD+=(--parallel-pathologies)
 
 # Auto-detect baseline trajectories for caching
 # Skip if resuming (state already has ep0) or if initial skill is set (cached

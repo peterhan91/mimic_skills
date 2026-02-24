@@ -20,6 +20,7 @@ set -euo pipefail
 #   --tot-breadth N          ToT frontier size
 #   --tot-n-generate N       ToT candidates per step
 #   --tot-temperature F      ToT generation temperature
+#   --parallel-pathologies   Run pathologies in parallel (all 7 at once)
 #
 # Examples:
 #   bash scripts/baseline_test.sh                           # defaults
@@ -37,6 +38,7 @@ set -euo pipefail
 
 PATIENT_SIMULATOR="True"
 PATSIM_SUFFIX="_patsim"
+PARALLEL_PATHOLOGIES=false
 TOT_ARGS=()
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
@@ -44,6 +46,8 @@ while [[ "${1:-}" == --* ]]; do
             PATIENT_SIMULATOR="False"
             PATSIM_SUFFIX=""
             shift ;;
+        --parallel-pathologies)
+            PARALLEL_PATHOLOGIES=true; shift ;;
         --tot-max-depth|--tot-breadth|--tot-n-generate|--tot-temperature)
             KEY=$(echo "${1#--}" | tr '-' '_')
             TOT_ARGS+=("${KEY}=${2:?$1 requires a value}"); shift 2 ;;
@@ -134,12 +138,10 @@ phase_start 1 "ZeroShot baseline (no skill, no lab annotations)"
 declare -A ZS_RUN_DIRS
 ZS_DESCR="_zs_baseline${PATSIM_SUFFIX}_test100"
 
-for P in "${PATHOLOGIES[@]}"; do
-    echo ""
-    echo "--- ZeroShot baseline: $P (100 patients) ---"
-
+run_zs_pathology() {
+    local P="$1"
     cd "$FRAMEWORK_DIR"
-    ZS_CMD=(
+    local CMD=(
         python run.py
         pathology="$P"
         model="$MODEL"
@@ -154,10 +156,34 @@ for P in "${PATHOLOGIES[@]}"; do
         run_descr="$ZS_DESCR"
     )
     if [ "$PATIENT_SIMULATOR" = "True" ]; then
-        ZS_CMD+=(patient_simulator=True)
+        CMD+=(patient_simulator=True)
     fi
-    "${ZS_CMD[@]}" || die "ZeroShot baseline failed for $P"
+    "${CMD[@]}"
+}
 
+if [ "$PARALLEL_PATHOLOGIES" = true ]; then
+    echo "  Running ${#PATHOLOGIES[@]} pathologies in parallel"
+    declare -A ZS_PIDS
+    for P in "${PATHOLOGIES[@]}"; do
+        echo "  Starting ZeroShot baseline: $P"
+        run_zs_pathology "$P" > "$LOG_DIR/zs_baseline_${P}_${TIMESTAMP}.log" 2>&1 &
+        ZS_PIDS[$P]=$!
+    done
+    for P in "${PATHOLOGIES[@]}"; do
+        if ! wait "${ZS_PIDS[$P]}"; then
+            die "ZeroShot baseline failed for $P (see $LOG_DIR/zs_baseline_${P}_${TIMESTAMP}.log)"
+        fi
+        echo "  Completed ZeroShot baseline: $P"
+    done
+else
+    for P in "${PATHOLOGIES[@]}"; do
+        echo ""
+        echo "--- ZeroShot baseline: $P (100 patients) ---"
+        run_zs_pathology "$P" || die "ZeroShot baseline failed for $P"
+    done
+fi
+
+for P in "${PATHOLOGIES[@]}"; do
     ZS_RUN_DIR=$(ls -td "$RESULTS_DIR"/*"$P"*"$ZS_DESCR"* 2>/dev/null | head -1)
     [ -n "$ZS_RUN_DIR" ] || die "Could not find ZeroShot baseline results for $P"
     ZS_RUN_DIRS[$P]="$ZS_RUN_DIR"
@@ -202,12 +228,10 @@ phase_start 3 "ToT baseline (no skill, no lab annotations)"
 declare -A TOT_RUN_DIRS
 TOT_DESCR="_tot_baseline${PATSIM_SUFFIX}_test100"
 
-for P in "${PATHOLOGIES[@]}"; do
-    echo ""
-    echo "--- ToT baseline: $P (100 patients) ---"
-
+run_tot_pathology() {
+    local P="$1"
     cd "$FRAMEWORK_DIR"
-    TOT_CMD=(
+    local CMD=(
         python run.py
         pathology="$P"
         model="$MODEL"
@@ -223,10 +247,34 @@ for P in "${PATHOLOGIES[@]}"; do
         "${TOT_ARGS[@]+"${TOT_ARGS[@]}"}"
     )
     if [ "$PATIENT_SIMULATOR" = "True" ]; then
-        TOT_CMD+=(patient_simulator=True)
+        CMD+=(patient_simulator=True)
     fi
-    "${TOT_CMD[@]}" || die "ToT baseline failed for $P"
+    "${CMD[@]}"
+}
 
+if [ "$PARALLEL_PATHOLOGIES" = true ]; then
+    echo "  Running ${#PATHOLOGIES[@]} pathologies in parallel"
+    declare -A TOT_PIDS
+    for P in "${PATHOLOGIES[@]}"; do
+        echo "  Starting ToT baseline: $P"
+        run_tot_pathology "$P" > "$LOG_DIR/tot_baseline_${P}_${TIMESTAMP}.log" 2>&1 &
+        TOT_PIDS[$P]=$!
+    done
+    for P in "${PATHOLOGIES[@]}"; do
+        if ! wait "${TOT_PIDS[$P]}"; then
+            die "ToT baseline failed for $P (see $LOG_DIR/tot_baseline_${P}_${TIMESTAMP}.log)"
+        fi
+        echo "  Completed ToT baseline: $P"
+    done
+else
+    for P in "${PATHOLOGIES[@]}"; do
+        echo ""
+        echo "--- ToT baseline: $P (100 patients) ---"
+        run_tot_pathology "$P" || die "ToT baseline failed for $P"
+    done
+fi
+
+for P in "${PATHOLOGIES[@]}"; do
     TOT_RUN_DIR=$(ls -td "$RESULTS_DIR"/*"$P"*"$TOT_DESCR"* 2>/dev/null | head -1)
     [ -n "$TOT_RUN_DIR" ] || die "Could not find ToT baseline results for $P"
     TOT_RUN_DIRS[$P]="$TOT_RUN_DIR"
