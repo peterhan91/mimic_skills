@@ -41,6 +41,7 @@ codes_Hager/MIMIC-Clinical-Decision-Making-Dataset/
 data_splits/*/remaining.pkl
 data_splits/*/*_hadm_info_first_diag.pkl
 data_splits/*/*_hadm_info_first_diag.pkl.train_backup
+data_splits/_merged/
 
 # EvoTest reference (forked, not part of this repo)
 EvoTest/
