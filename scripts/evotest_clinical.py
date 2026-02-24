@@ -596,7 +596,7 @@ class ClinicalEvoTest:
         client = anthropic.Anthropic()
         message = client.messages.create(
             model=self.args.evolver_model,
-            max_tokens=1024,
+            max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         skill_text = message.content[0].text

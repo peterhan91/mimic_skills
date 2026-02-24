@@ -318,7 +318,7 @@ def call_anthropic(prompt, model):
     client = anthropic.Anthropic()
     message = client.messages.create(
         model=model,
-        max_tokens=1024,
+        max_tokens=4096,
         messages=[{"role": "user", "content": prompt}],
     )
     return message.content[0].text
