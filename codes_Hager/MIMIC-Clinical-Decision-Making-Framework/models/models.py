@@ -88,7 +88,11 @@ class CustomLLM(LLM):
             print(f"Using vLLM server at {self.vllm_base_url} for {self.model_name}")
             return
         elif self.openai_api_key:
-            self.tokenizer = tiktoken.encoding_for_model(self.model_name)
+            try:
+                self.tokenizer = tiktoken.encoding_for_model(self.model_name)
+            except KeyError:
+                # Newer models (gpt-5.2, gpt-5-mini) not yet in tiktoken
+                self.tokenizer = tiktoken.get_encoding("o200k_base")
             openai.api_key = self.openai_api_key
             return
         elif self.anthropic_api_key:
@@ -426,13 +430,19 @@ class CustomLLM(LLM):
                 self.tags,
             )
 
-            response = self.completion_with_backoff(
+            _is_gpt5 = self.model_name.startswith("gpt-5")
+            api_kwargs = dict(
                 model=self.model_name,
                 messages=messages,
-                stop=STOP_WORDS,
-                temperature=0.0,
-                seed=self.seed,
             )
+            # GPT-5 models only support temperature=1, no stop, no seed
+            if not _is_gpt5:
+                api_kwargs["temperature"] = 0.0
+                api_kwargs["seed"] = self.seed
+                if STOP_WORDS:
+                    api_kwargs["stop"] = STOP_WORDS
+
+            response = self.completion_with_backoff(**api_kwargs)
             output = response["choices"][0]["message"]["content"]
 
         elif self.anthropic_api_key:
@@ -568,13 +578,18 @@ class CustomLLM(LLM):
 
         elif self.openai_api_key:
             messages = extract_sections(prompt, self.tags)
-            response = self.completion_with_backoff(
+            _is_gpt5 = self.model_name.startswith("gpt-5")
+            api_kwargs = dict(
                 model=self.model_name,
                 messages=messages,
-                stop=STOP_WORDS,
-                temperature=temperature,
-                seed=None if temperature > 0 else self.seed,
             )
+            if not _is_gpt5:
+                api_kwargs["temperature"] = temperature
+                api_kwargs["seed"] = None if temperature > 0 else self.seed
+                if STOP_WORDS:
+                    api_kwargs["stop"] = STOP_WORDS
+
+            response = self.completion_with_backoff(**api_kwargs)
             output = response["choices"][0]["message"]["content"]
 
         elif self.anthropic_api_key:

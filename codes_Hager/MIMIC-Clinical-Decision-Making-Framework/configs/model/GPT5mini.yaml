@@ -4,8 +4,8 @@ defaults:
 
 openai_api_key: ${oc.env:OPENAI_API_KEY,""}
 
-model_name: gpt-4
-max_context_length: 8192
+model_name: gpt-5-mini
+max_context_length: 400000
 exllama: False
 
 system_tag_start: "<|im_start|>system"

@@ -2,7 +2,7 @@
 defaults:
   - _self_
 
-openai_api_key:
+openai_api_key: ${oc.env:OPENAI_API_KEY,""}
 
 model_name: gpt-3.5-turbo
 max_context_length: 4096
@@ -17,4 +17,4 @@ user_tag_end: "<|im_end|>"
 ai_tag_start: "<|im_start|>assistant"
 ai_tag_end: "<|im_end|>"
 
-stop_words:
+stop_words: []
