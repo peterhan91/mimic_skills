@@ -430,17 +430,18 @@ class CustomLLM(LLM):
                 self.tags,
             )
 
-            _is_gpt5 = self.model_name.startswith("gpt-5")
+            # GPT-5 family: no stop sequences; gpt-5-mini also lacks temperature/seed control
+            _no_stop = self.model_name.startswith("gpt-5")
+            _no_temp = self.model_name.startswith("gpt-5-mini")
             api_kwargs = dict(
                 model=self.model_name,
                 messages=messages,
             )
-            # GPT-5 models only support temperature=1, no stop, no seed
-            if not _is_gpt5:
+            if not _no_temp:
                 api_kwargs["temperature"] = 0.0
                 api_kwargs["seed"] = self.seed
-                if STOP_WORDS:
-                    api_kwargs["stop"] = STOP_WORDS
+            if STOP_WORDS and not _no_stop:
+                api_kwargs["stop"] = STOP_WORDS
 
             response = self.completion_with_backoff(**api_kwargs)
             output = response["choices"][0]["message"]["content"]
@@ -578,16 +579,17 @@ class CustomLLM(LLM):
 
         elif self.openai_api_key:
             messages = extract_sections(prompt, self.tags)
-            _is_gpt5 = self.model_name.startswith("gpt-5")
+            _no_stop = self.model_name.startswith("gpt-5")
+            _no_temp = self.model_name.startswith("gpt-5-mini")
             api_kwargs = dict(
                 model=self.model_name,
                 messages=messages,
             )
-            if not _is_gpt5:
+            if not _no_temp:
                 api_kwargs["temperature"] = temperature
                 api_kwargs["seed"] = None if temperature > 0 else self.seed
-                if STOP_WORDS:
-                    api_kwargs["stop"] = STOP_WORDS
+            if STOP_WORDS and not _no_stop:
+                api_kwargs["stop"] = STOP_WORDS
 
             response = self.completion_with_backoff(**api_kwargs)
             output = response["choices"][0]["message"]["content"]
