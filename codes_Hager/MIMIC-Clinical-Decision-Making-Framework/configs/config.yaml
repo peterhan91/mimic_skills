@@ -49,3 +49,4 @@ tot_breadth: 3
 tot_max_depth: 20
 tot_temperature: 1.0
 tot_eval_temperature: 0.0
+tot_eval_mode: combined

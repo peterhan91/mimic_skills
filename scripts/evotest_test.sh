@@ -46,7 +46,7 @@ while [[ "${1:-}" == --* ]]; do
             PATIENT_SIMULATOR="False"; shift ;;
         --parallel-pathologies)
             PARALLEL_PATHOLOGIES=true; shift ;;
-        --tot-max-depth|--tot-breadth|--tot-n-generate|--tot-temperature)
+        --tot-max-depth|--tot-breadth|--tot-n-generate|--tot-temperature|--tot-eval-mode)
             # Convert --tot-max-depth → tot_max_depth= for Hydra
             KEY=$(echo "${1#--}" | tr '-' '_')
             TOT_ARGS+=("${KEY}=${2:?$1 requires a value}"); shift 2 ;;

@@ -436,7 +436,8 @@ class ClinicalEvoTest:
             run_cmd.append(f"agent={self.agent_type}")
         if self.agent_type == "ToT":
             for key in ("tot_n_generate", "tot_breadth", "tot_max_depth",
-                        "tot_temperature", "tot_eval_temperature"):
+                        "tot_temperature", "tot_eval_temperature",
+                        "tot_eval_mode"):
                 val = getattr(self.args, key, None)
                 if val is not None:
                     run_cmd.append(f"{key}={val}")
@@ -1185,6 +1186,11 @@ def main():
     parser.add_argument(
         "--tot-eval-temperature", type=float, default=None, dest="tot_eval_temperature",
         help="ToT: temperature for path evaluation (default: from config)"
+    )
+    parser.add_argument(
+        "--tot-eval-mode", type=str, default=None, dest="tot_eval_mode",
+        choices=["llm", "combined"],
+        help="ToT: evaluation mode — 'llm' (LLM-as-judge only) or 'combined' (structural guardrails + LLM, recommended)"
     )
     parser.add_argument(
         "--parallel-pathologies", action="store_true",

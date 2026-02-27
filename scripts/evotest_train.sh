@@ -53,6 +53,7 @@ TOT_MAX_DEPTH=""
 TOT_BREADTH=""
 TOT_N_GENERATE=""
 TOT_TEMPERATURE=""
+TOT_EVAL_MODE=""
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
         --resume)
@@ -71,6 +72,8 @@ while [[ "${1:-}" == --* ]]; do
             TOT_N_GENERATE="${2:?--tot-n-generate requires a value}"; shift 2 ;;
         --tot-temperature)
             TOT_TEMPERATURE="${2:?--tot-temperature requires a value}"; shift 2 ;;
+        --tot-eval-mode)
+            TOT_EVAL_MODE="${2:?--tot-eval-mode requires a value (llm or combined)}"; shift 2 ;;
         *)
             echo "Unknown flag: $1" >&2; exit 1 ;;
     esac
@@ -195,6 +198,7 @@ fi
 [ -n "$TOT_BREADTH" ]    && EVOTEST_CMD+=(--tot-breadth "$TOT_BREADTH")
 [ -n "$TOT_N_GENERATE" ] && EVOTEST_CMD+=(--tot-n-generate "$TOT_N_GENERATE")
 [ -n "$TOT_TEMPERATURE" ] && EVOTEST_CMD+=(--tot-temperature "$TOT_TEMPERATURE")
+[ -n "$TOT_EVAL_MODE" ]  && EVOTEST_CMD+=(--tot-eval-mode "$TOT_EVAL_MODE")
 
 # Parallel pathologies
 [ "$PARALLEL_PATHOLOGIES" = true ] && EVOTEST_CMD+=(--parallel-pathologies)

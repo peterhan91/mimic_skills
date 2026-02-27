@@ -17,7 +17,7 @@ from langchain.schema import AgentFinish
 from loguru import logger
 
 from agents.AgentAction import AgentAction
-from agents.DiagnosisWorkflowParser import DiagnosisWorkflowParser
+from agents.DiagnosisWorkflowParser import DiagnosisWorkflowParser, InvalidActionError
 from agents.prompts import (
     CHAT_TEMPLATE,
     DIAG_CRIT_TOOL_DESCR,
@@ -92,6 +92,7 @@ class TreeOfThoughtsRunner:
         temperature: float = 0.7,
         eval_temperature: float = 0.0,
         patient_simulator=None,
+        eval_mode: str = "combined",
     ):
         self.llm = llm
         self.prompt = prompt
@@ -107,6 +108,7 @@ class TreeOfThoughtsRunner:
         self.temperature = temperature
         self.eval_temperature = eval_temperature
         self.patient_simulator = patient_simulator
+        self.eval_mode = eval_mode
         self.cache = ToolResultCache()
 
     # ── public interface (matches AgentExecutor.__call__) ────────────
@@ -137,8 +139,11 @@ class TreeOfThoughtsRunner:
                 break
 
             # EVALUATE each candidate
-            for c in candidates:
-                c.value = self._evaluate_state(c, patient_input, depth)
+            if self.eval_mode == "combined":
+                self._evaluate_combined(candidates, patient_input, depth)
+            else:
+                for c in candidates:
+                    c.value = self._evaluate_state(c, patient_input, depth)
 
             # SELECT top-b
             candidates.sort(key=lambda s: s.value, reverse=True)
@@ -260,6 +265,86 @@ class TreeOfThoughtsRunner:
             score = int(match.group())
             return float(min(max(score, 1), 10))
         return 5.0  # default if parsing fails
+
+    # ── COMBINED EVALUATION (structural + LLM) ─────────────────────
+
+    def _compute_structural_reward(self, state: ToTState) -> float:
+        """Lean structural checks — PE ordering, invalid tools, duplicates.
+
+        Deliberately omits lab and imaging scoring: the old GRPO reward
+        gave +0.5 per union-lab hit, incentivising over-ordering (failure
+        mode #6 from the paper).  Semantic assessment of lab relevance and
+        imaging appropriateness is left to the LLM evaluator.
+        """
+        reward = 0.0
+        seen_actions: set = set()
+
+        for idx, (action, _observation) in enumerate(state.intermediate_steps):
+            tool = action.tool
+
+            # Duplicate detection
+            dedup_key = (tool, str(action.tool_input))
+            if dedup_key in seen_actions:
+                reward -= 0.5
+                continue
+            seen_actions.add(dedup_key)
+
+            # Invalid / hallucinated tool
+            if tool == InvalidActionError.invalid_tool_str:
+                reward -= 1.0
+                continue
+
+            # PE: full credit if first action, partial if late
+            if tool == "Physical Examination":
+                reward += 2.0 if idx == 0 else 0.5
+
+        # Mild efficiency pressure
+        reward -= len(state.intermediate_steps) * 0.1
+        return reward
+
+    @staticmethod
+    def _normalize(values: List[float]) -> List[float]:
+        """Zero-mean, unit-variance normalisation with skip trick."""
+        n = len(values)
+        if n == 0:
+            return []
+        mean = sum(values) / n
+        var = sum((v - mean) ** 2 for v in values) / n
+        std = var ** 0.5
+        if std < 1e-4:
+            return [0.0] * n
+        return [(v - mean) / (std + 1e-4) for v in values]
+
+    def _evaluate_combined(
+        self, candidates: List[ToTState], patient_input: str, depth: int
+    ) -> None:
+        """Structural guardrails (0.3) + LLM semantic judgement (0.7).
+
+        Both signals are independently normalised to zero-mean unit-variance
+        before combining, so neither dominates due to scale differences.
+        """
+        if not candidates:
+            return
+
+        # Structural signal — instant, deterministic
+        struct_rewards = [self._compute_structural_reward(c) for c in candidates]
+        struct_adv = self._normalize(struct_rewards)
+
+        # Semantic signal — LLM-as-judge
+        llm_scores = [
+            self._evaluate_state(c, patient_input, depth) for c in candidates
+        ]
+        llm_adv = self._normalize(llm_scores)
+
+        # Weighted combination: LLM dominates, structure guards
+        for c, sa, la in zip(candidates, struct_adv, llm_adv):
+            c.value = 0.3 * sa + 0.7 * la
+
+        logger.info(
+            f"[ToT-combined] structural={[round(r, 2) for r in struct_rewards]} "
+            f"llm={[round(s, 1) for s in llm_scores]} "
+            f"final={[round(c.value, 2) for c in candidates]}"
+        )
 
     # ── TOOL EXECUTION ──────────────────────────────────────────────
 
@@ -427,6 +512,7 @@ def build_tot_runner(
     tot_max_depth=20,
     tot_temperature=1.0,
     tot_eval_temperature=0.0,
+    tot_eval_mode="combined",
 ):
     """Build a TreeOfThoughtsRunner with the same interface as build_agent_executor_ZeroShot."""
     with open(lab_test_mapping_path, "rb") as f:
@@ -542,4 +628,5 @@ def build_tot_runner(
         temperature=tot_temperature,
         eval_temperature=tot_eval_temperature,
         patient_simulator=patient_simulator,
+        eval_mode=tot_eval_mode,
     )
