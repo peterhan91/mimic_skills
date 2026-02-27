@@ -37,6 +37,7 @@ set -euo pipefail
 AGENT="ZeroShot"
 PATIENT_SIMULATOR="True"
 PARALLEL_PATHOLOGIES=false
+RUN_TAG=""
 TOT_ARGS=()
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
@@ -46,6 +47,8 @@ while [[ "${1:-}" == --* ]]; do
             PATIENT_SIMULATOR="False"; shift ;;
         --parallel-pathologies)
             PARALLEL_PATHOLOGIES=true; shift ;;
+        --run-tag)
+            RUN_TAG="${2:?--run-tag requires a value}"; shift 2 ;;
         --tot-max-depth|--tot-breadth|--tot-n-generate|--tot-temperature|--tot-eval-mode)
             # Convert --tot-max-depth → tot_max_depth= for Hydra
             KEY=$(echo "${1#--}" | tr '-' '_')
@@ -77,14 +80,16 @@ LAB_TEST_MAPPING="$PROJECT_DIR/MIMIC-CDM-IV/lab_test_mapping.pkl"
 PATHOLOGIES=("appendicitis" "cholecystitis" "diverticulitis" "pancreatitis" "cholangitis" "bowel_obstruction" "pyelonephritis")
 
 # Experiment prefix for trajectories/comparisons (prevents cross-experiment overwrites)
+TAG_SUFFIX=""
+[ -n "$RUN_TAG" ] && TAG_SUFFIX="_${RUN_TAG}"
 if [ "$AGENT" = "ToT" ] && [ "$PATIENT_SIMULATOR" = "True" ]; then
-    TEST_PREFIX="totps"
+    TEST_PREFIX="totps${TAG_SUFFIX}"
 elif [ "$AGENT" = "ToT" ]; then
-    TEST_PREFIX="tot"
+    TEST_PREFIX="tot${TAG_SUFFIX}"
 elif [ "$PATIENT_SIMULATOR" = "True" ]; then
-    TEST_PREFIX="evops"
+    TEST_PREFIX="evops${TAG_SUFFIX}"
 else
-    TEST_PREFIX="evo"
+    TEST_PREFIX="evo${TAG_SUFFIX}"
 fi
 
 # ============================================================

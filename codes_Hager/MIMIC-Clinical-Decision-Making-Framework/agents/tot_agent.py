@@ -27,6 +27,13 @@ from agents.prompts import (
     ASK_PATIENT_TOOL_USE_EXAMPLE,
 )
 from agents.tot_prompts import TOT_EVALUATION_PROMPT
+from evaluators.appendicitis_evaluator import AppendicitisEvaluator
+from evaluators.cholecystitis_evaluator import CholecystitisEvaluator
+from evaluators.diverticulitis_evaluator import DiverticulitisEvaluator
+from evaluators.pancreatitis_evaluator import PancreatitisEvaluator
+from evaluators.cholangitis_evaluator import CholangitisEvaluator
+from evaluators.bowel_obstruction_evaluator import BowelObstructionEvaluator
+from evaluators.pyelonephritis_evaluator import PyelonephritisEvaluator
 from tools.Tools import (
     DoPhysicalExamination,
     ReadDiagnosticCriteria,
@@ -35,6 +42,28 @@ from tools.Tools import (
 )
 from tools.utils import action_input_pretty_printer
 from utils.nlp import calculate_num_tokens
+
+# Maps pathology name → evaluator class (for GRPO rubric eval)
+EVALUATOR_MAP = {
+    "appendicitis": AppendicitisEvaluator,
+    "cholecystitis": CholecystitisEvaluator,
+    "diverticulitis": DiverticulitisEvaluator,
+    "pancreatitis": PancreatitisEvaluator,
+    "cholangitis": CholangitisEvaluator,
+    "bowel_obstruction": BowelObstructionEvaluator,
+    "pyelonephritis": PyelonephritisEvaluator,
+}
+
+# Max "Laboratory Tests" score per pathology (1 point per required category)
+MAX_LAB_SCORE = {
+    "appendicitis": 1,
+    "cholecystitis": 3,
+    "diverticulitis": 1,
+    "pancreatitis": 3,
+    "cholangitis": 3,
+    "bowel_obstruction": 2,
+    "pyelonephritis": 3,
+}
 
 
 @dataclass
@@ -93,6 +122,7 @@ class TreeOfThoughtsRunner:
         eval_temperature: float = 0.0,
         patient_simulator=None,
         eval_mode: str = "combined",
+        pathology: Optional[str] = None,
     ):
         self.llm = llm
         self.prompt = prompt
@@ -109,6 +139,7 @@ class TreeOfThoughtsRunner:
         self.eval_temperature = eval_temperature
         self.patient_simulator = patient_simulator
         self.eval_mode = eval_mode
+        self.pathology = pathology
         self.cache = ToolResultCache()
 
     # ── public interface (matches AgentExecutor.__call__) ────────────
@@ -139,7 +170,12 @@ class TreeOfThoughtsRunner:
                 break
 
             # EVALUATE each candidate
-            if self.eval_mode == "combined":
+            if self.eval_mode == "grpo" and self._has_ground_truth():
+                self._evaluate_grpo(candidates, patient_input, depth)
+            elif self.eval_mode == "grpo":
+                # Fallback: no ground truth available (test time)
+                self._evaluate_combined(candidates, patient_input, depth)
+            elif self.eval_mode == "combined":
                 self._evaluate_combined(candidates, patient_input, depth)
             else:
                 for c in candidates:
@@ -346,6 +382,81 @@ class TreeOfThoughtsRunner:
             f"final={[round(c.value, 2) for c in candidates]}"
         )
 
+    # ── GRPO RUBRIC EVALUATION ──────────────────────────────────────
+
+    def _has_ground_truth(self) -> bool:
+        """Check if patient dict has ground-truth data for rubric scoring."""
+        return bool(self.patient.get("Discharge Diagnosis"))
+
+    def _build_reference_tuple(self) -> tuple:
+        """Build the 5-element reference tuple for PathologyEvaluator."""
+        return (
+            self.patient.get("Discharge Diagnosis", ""),
+            self.patient.get("ICD Diagnosis", []),
+            self.patient.get("Procedures ICD9", []),
+            self.patient.get("Procedures ICD10", []),
+            self.patient.get("Procedures Discharge", []),
+        )
+
+    def _compute_rubric_reward(self, state: ToTState, patient_input: str) -> float:
+        """Force-finish a candidate and score it with the real PathologyEvaluator.
+
+        Returns the composite reward (same formula as evotest_clinical.py).
+        """
+        # Force-finish to get diagnosis + treatment text
+        finished = self._force_finish(state, patient_input)
+
+        # Fresh evaluator (has mutable state)
+        evaluator_cls = EVALUATOR_MAP.get(self.pathology)
+        if evaluator_cls is None:
+            logger.warning(f"[ToT-grpo] No evaluator for pathology={self.pathology}, returning 0")
+            return 0.0
+        evaluator = evaluator_cls()
+
+        reference = self._build_reference_tuple()
+
+        eval_result = evaluator._evaluate_agent_trajectory(
+            prediction=finished.prediction,
+            input=patient_input,
+            agent_trajectory=finished.intermediate_steps,
+            reference=reference,
+        )
+
+        s = eval_result["scores"]
+        max_lab = MAX_LAB_SCORE.get(self.pathology, 1)
+
+        reward = (
+            3.0 * s.get("Diagnosis", 0)
+            + 1.0 * s.get("Physical Examination", 0)
+            + 0.5 * s.get("Late Physical Examination", 0)
+            + 1.0 * min(s.get("Laboratory Tests", 0) / max_lab, 1.0)
+            + 1.0 * min(s.get("Imaging", 0) / 2.0, 1.0)
+            - 0.5 * min(s.get("Invalid Tools", 0), 2)
+            - 0.3 * (1 - s.get("Action Parsing", 0))
+        )
+        return reward
+
+    def _evaluate_grpo(
+        self, candidates: List[ToTState], patient_input: str, depth: int
+    ) -> None:
+        """GRPO-style evaluation: rubric rewards → normalize → set c.value."""
+        if not candidates:
+            return
+
+        raw_rewards = [
+            self._compute_rubric_reward(c, patient_input) for c in candidates
+        ]
+        advantages = self._normalize(raw_rewards)
+
+        for c, adv in zip(candidates, advantages):
+            c.value = adv
+
+        logger.info(
+            f"[ToT-grpo] depth={depth} "
+            f"raw_rewards={[round(r, 3) for r in raw_rewards]} "
+            f"advantages={[round(a, 3) for a in advantages]}"
+        )
+
     # ── TOOL EXECUTION ──────────────────────────────────────────────
 
     def _execute_tool(
@@ -513,6 +624,7 @@ def build_tot_runner(
     tot_temperature=1.0,
     tot_eval_temperature=0.0,
     tot_eval_mode="combined",
+    pathology=None,
 ):
     """Build a TreeOfThoughtsRunner with the same interface as build_agent_executor_ZeroShot."""
     with open(lab_test_mapping_path, "rb") as f:
@@ -629,4 +741,5 @@ def build_tot_runner(
         eval_temperature=tot_eval_temperature,
         patient_simulator=patient_simulator,
         eval_mode=tot_eval_mode,
+        pathology=pathology,
     )

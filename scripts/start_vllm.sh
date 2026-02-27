@@ -8,8 +8,10 @@ set -euo pipefail
 #   bash scripts/container.sh evotest 10
 #
 # Usage:
-#   bash scripts/start_vllm.sh              # default config
+#   bash scripts/start_vllm.sh              # default: Qwen3-30B-A3B
+#   bash scripts/start_vllm.sh --qwen35     # Qwen3.5-35B-A3B (text-only)
 #   bash scripts/start_vllm.sh --tool-call  # enable tool calling (for SDK)
+#   bash scripts/start_vllm.sh --qwen35 --tool-call  # combine flags
 #
 # Stop: Ctrl+C
 # ============================================================
@@ -18,20 +20,52 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -f "$SCRIPT_DIR/../.env" ] && source "$SCRIPT_DIR/../.env"
 
-SIF="${MIMIC_SIF:?ERROR: Set MIMIC_SIF in .env (path to vllm SIF image)}"
-OVERLAY="${MIMIC_OVERLAY:?ERROR: Set MIMIC_OVERLAY in .env (path to overlay image)}"
 HF_CACHE="${MIMIC_HF_CACHE:-$HOME/.cache/huggingface}"
 PROJECT="${MIMIC_PROJECT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
-
-VLLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
 VLLM_TP="${VLLM_TP:-1}"
 VLLM_GPU_UTIL=0.95
-VLLM_MAX_LEN=32768
 VLLM_PORT=8000
 
+# Parse flags
+USE_QWEN35=false
+TOOL_CALL=false
+for arg in "$@"; do
+    case "$arg" in
+        --qwen35)    USE_QWEN35=true ;;
+        --tool-call) TOOL_CALL=true ;;
+    esac
+done
+
+# Model-specific configuration
+if $USE_QWEN35; then
+    VLLM_MODEL="Qwen/Qwen3.5-35B-A3B"
+    VLLM_MAX_LEN=32768
+    SIF="${MIMIC_SIF_QWEN35:-/cbica/home/hanti/containers/vllm-openai_nightly.sif}"
+    OVERLAY="${MIMIC_OVERLAY_QWEN35:-/cbica/home/hanti/containers/vllm_overlay_qwen35.img}"
+else
+    VLLM_MODEL="Qwen/Qwen3-30B-A3B-Instruct-2507"
+    VLLM_MAX_LEN=32768
+    SIF="${MIMIC_SIF:?ERROR: Set MIMIC_SIF in .env (path to vllm SIF image)}"
+    OVERLAY="${MIMIC_OVERLAY:?ERROR: Set MIMIC_OVERLAY in .env (path to overlay image)}"
+fi
+
 VLLM_EXTRA_ARGS=""
-if [ "${1:-}" = "--tool-call" ]; then
-    VLLM_EXTRA_ARGS="--enable-auto-tool-choice --tool-call-parser hermes"
+
+# Tool calling
+if $TOOL_CALL; then
+    if $USE_QWEN35; then
+        VLLM_EXTRA_ARGS="--enable-auto-tool-choice --tool-call-parser qwen3_coder"
+    else
+        VLLM_EXTRA_ARGS="--enable-auto-tool-choice --tool-call-parser hermes"
+    fi
+fi
+
+# Qwen3.5-specific flags
+if $USE_QWEN35; then
+    # Reasoning parser for thinking mode, text-only to skip vision encoder
+    VLLM_EXTRA_ARGS="$VLLM_EXTRA_ARGS \
+        --reasoning-parser qwen3 \
+        --language-model-only"
 fi
 
 # GH200 performance tuning
@@ -73,6 +107,13 @@ if [ -d "$PROJECT/moe_configs" ]; then
     echo "  MoE configs: GH200-tuned (from H200)"
 fi
 
+# Python binary: nightly SIF uses python3 (no python symlink)
+if $USE_QWEN35; then
+    PYTHON_BIN="python3"
+else
+    PYTHON_BIN="python"
+fi
+
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}" \
 apptainer exec --nv --fakeroot \
     --overlay "$OVERLAY"${OVERLAY_MOUNT:+:$OVERLAY_MOUNT} \
@@ -80,7 +121,7 @@ apptainer exec --nv --fakeroot \
     --bind "$PROJECT":/workspace \
     $MOE_CONFIGS_BIND \
     "$SIF" \
-    python -m vllm.entrypoints.openai.api_server \
+    $PYTHON_BIN -m vllm.entrypoints.openai.api_server \
         --model "$VLLM_MODEL" \
         --tensor-parallel-size "$VLLM_TP" \
         --gpu-memory-utilization "$VLLM_GPU_UTIL" \

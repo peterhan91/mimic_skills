@@ -16,6 +16,8 @@ set -euo pipefail
 #   --tot-n-generate N       ToT candidates per step
 #   --tot-temperature F      ToT generation temperature
 #   --parallel-pathologies   Run pathologies in parallel within each episode
+#   --run-tag TAG            Append TAG to output dirs (isolate parallel experiments)
+#   --tot-eval-mode MODE     ToT evaluation: "llm", "combined", or "grpo" (rubric-based, training only)
 #
 # Examples:
 #   bash scripts/evotest_full.sh --agent ToT 10 Qwen3_30B_A3B
@@ -34,6 +36,8 @@ PARALLEL_FLAG=()
 TOT_FLAGS=()
 AGENT="ZeroShot"
 PATIENT_SIMULATOR="True"
+RUN_TAG=""
+RUN_TAG_FLAG=()
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
         --resume)
@@ -46,7 +50,10 @@ while [[ "${1:-}" == --* ]]; do
             PATSIM_FLAG=(--no-patient-sim); shift ;;
         --parallel-pathologies)
             PARALLEL_FLAG=(--parallel-pathologies); shift ;;
-        --tot-max-depth|--tot-breadth|--tot-n-generate|--tot-temperature)
+        --run-tag)
+            RUN_TAG="${2:?--run-tag requires a value}"
+            RUN_TAG_FLAG=(--run-tag "$RUN_TAG"); shift 2 ;;
+        --tot-max-depth|--tot-breadth|--tot-n-generate|--tot-temperature|--tot-eval-mode)
             TOT_FLAGS+=("$1" "${2:?$1 requires a value}"); shift 2 ;;
         *)
             echo "Unknown flag: $1" >&2; exit 1 ;;
@@ -54,18 +61,20 @@ while [[ "${1:-}" == --* ]]; do
 done
 
 # Agent × patient-sim → 2×2 matrix of parallel experiment dirs
+TAG_SUFFIX=""
+[ -n "$RUN_TAG" ] && TAG_SUFFIX="_${RUN_TAG}"
 if [ "$AGENT" = "ToT" ] && [ "$PATIENT_SIMULATOR" = "True" ]; then
-    STATE_FILE="$PROJECT_DIR/evotest_state_tot_patsim/state.json"
-    SKILLS_SUBDIR="skills/evo_tot_patsim"
+    STATE_FILE="$PROJECT_DIR/evotest_state_tot_patsim${TAG_SUFFIX}/state.json"
+    SKILLS_SUBDIR="skills/evo_tot_patsim${TAG_SUFFIX}"
 elif [ "$AGENT" = "ToT" ]; then
-    STATE_FILE="$PROJECT_DIR/evotest_state_tot/state.json"
-    SKILLS_SUBDIR="skills/evo_tot"
+    STATE_FILE="$PROJECT_DIR/evotest_state_tot${TAG_SUFFIX}/state.json"
+    SKILLS_SUBDIR="skills/evo_tot${TAG_SUFFIX}"
 elif [ "$PATIENT_SIMULATOR" = "True" ]; then
-    STATE_FILE="$PROJECT_DIR/evotest_state_patsim/state.json"
-    SKILLS_SUBDIR="skills/evo_patsim"
+    STATE_FILE="$PROJECT_DIR/evotest_state_patsim${TAG_SUFFIX}/state.json"
+    SKILLS_SUBDIR="skills/evo_patsim${TAG_SUFFIX}"
 else
-    STATE_FILE="$PROJECT_DIR/evotest_state/state.json"
-    SKILLS_SUBDIR="skills/evo"
+    STATE_FILE="$PROJECT_DIR/evotest_state${TAG_SUFFIX}/state.json"
+    SKILLS_SUBDIR="skills/evo${TAG_SUFFIX}"
 fi
 
 EPISODES="${1:-10}"
@@ -95,6 +104,7 @@ bash "$PROJECT_DIR/scripts/evotest_train.sh" \
     "${AGENT_FLAG[@]+"${AGENT_FLAG[@]}"}" \
     "${PATSIM_FLAG[@]+"${PATSIM_FLAG[@]}"}" \
     "${PARALLEL_FLAG[@]+"${PARALLEL_FLAG[@]}"}" \
+    "${RUN_TAG_FLAG[@]+"${RUN_TAG_FLAG[@]}"}" \
     "${TOT_FLAGS[@]+"${TOT_FLAGS[@]}"}" \
     "$EPISODES" "$MODEL" "$EVOLVER_MODEL" "$ANNOTATE_CLINICAL"
 
@@ -141,6 +151,7 @@ bash "$PROJECT_DIR/scripts/evotest_test.sh" \
     "${AGENT_FLAG[@]+"${AGENT_FLAG[@]}"}" \
     "${PATSIM_FLAG[@]+"${PATSIM_FLAG[@]}"}" \
     "${PARALLEL_FLAG[@]+"${PARALLEL_FLAG[@]}"}" \
+    "${RUN_TAG_FLAG[@]+"${RUN_TAG_FLAG[@]}"}" \
     "${TOT_FLAGS[@]+"${TOT_FLAGS[@]}"}" \
     "$BEST_SKILL" "$MODEL" "$ANNOTATE_CLINICAL"
 

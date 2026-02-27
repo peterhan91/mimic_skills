@@ -198,6 +198,7 @@ def run(args: DictConfig):
                 tot_temperature=args.get("tot_temperature", 0.7),
                 tot_eval_temperature=args.get("tot_eval_temperature", 0.0),
                 tot_eval_mode=args.get("tot_eval_mode", "combined"),
+                pathology=args.pathology,
             )
             result = runner({"input": patient_input})
         else:
