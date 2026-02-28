@@ -141,7 +141,7 @@ def format_duration(seconds):
 
 def print_metrics_table(per_pathology, per_metric):
     """Log a formatted metrics table after each episode."""
-    header = f"    {'Pathology':<18s} {'Composite':>9s} {'Dx':>5s} {'G.Dx':>5s} {'PE':>5s} {'Labs':>5s} {'Img':>5s} {'InvT':>5s}"
+    header = f"    {'Pathology':<18s} {'Composite':>9s} {'Dx':>5s} {'G.Dx':>5s} {'PE':>5s} {'Labs':>5s} {'Img':>5s} {'Trt':>5s} {'InvT':>5s}"
     sep = "    " + "-" * len(header.strip())
     logger.info(sep)
     logger.info(header)
@@ -158,9 +158,10 @@ def print_metrics_table(per_pathology, per_metric):
         pe = per_metric.get("Physical Examination", 0)
         labs = per_metric.get("Laboratory Tests", 0)
         img = per_metric.get("Imaging", 0)
+        trt = per_metric.get("Treatment Match", 0)
         inv = per_metric.get("Invalid Tools", 0)
         logger.info(
-            f"    {'AVERAGE':<18s} {'':>9s} {dx:>5.2f} {gdx:>5.2f} {pe:>5.2f} {labs:>5.2f} {img:>5.2f} {inv:>5.2f}"
+            f"    {'AVERAGE':<18s} {'':>9s} {dx:>5.2f} {gdx:>5.2f} {pe:>5.2f} {labs:>5.2f} {img:>5.2f} {trt:>5.2f} {inv:>5.2f}"
         )
         logger.info(sep)
 
@@ -322,15 +323,35 @@ class ClinicalEvoTest:
     # ------------------------------------------------------------------
     # Composite Scoring
     # ------------------------------------------------------------------
+    @staticmethod
+    def _treatment_match_score(answers):
+        """Fraction of required treatments that the agent correctly requested.
+
+        Uses answers["Treatment Requested"] and answers["Treatment Required"].
+        Returns 0.0 if treatment data is missing or no treatments are required.
+        """
+        requested = answers.get("Treatment Requested", {})
+        required = answers.get("Treatment Required", {})
+        if not required:
+            return 0.0
+        n_required = sum(1 for v in required.values() if v)
+        if n_required == 0:
+            return 0.0
+        n_correct = sum(
+            1 for k, v in required.items() if v and requested.get(k, False)
+        )
+        return n_correct / n_required
+
     def compute_composite_score(self, all_trajectory_data):
         """Compute weighted composite score across all pathologies.
 
-        Per-patient score (max ~6.5):
+        Per-patient score (max ~7.5):
             3.0 * Diagnosis
           + 1.0 * Physical Examination (PE first)
           + 0.5 * Late Physical Examination (PE at all)
           + 1.0 * (Laboratory Tests / max_lab_score)
           + 1.0 * (Imaging / 2.0)
+          + 1.0 * Treatment match (fraction of required treatments requested)
           - 0.5 * Invalid Tools
           - 0.3 * (1 - Action Parsing)
 
@@ -346,12 +367,15 @@ class ClinicalEvoTest:
 
             for admission in data["admissions"]:
                 s = admission["scores"]
+                a = admission.get("answers", {})
+                treatment_score = self._treatment_match_score(a)
                 ps = (
                     3.0 * s.get("Diagnosis", 0)
                     + 1.0 * s.get("Physical Examination", 0)
                     + 0.5 * s.get("Late Physical Examination", 0)
                     + 1.0 * min(s.get("Laboratory Tests", 0) / max_lab, 1.0)
                     + 1.0 * min(s.get("Imaging", 0) / 2.0, 1.0)
+                    + 1.0 * treatment_score
                     - 0.5 * min(s.get("Invalid Tools", 0), 2)
                     - 0.3 * (1 - s.get("Action Parsing", 0))
                 )
@@ -372,6 +396,17 @@ class ClinicalEvoTest:
                     per_metric[key] = []
                 per_metric[key].append(data["aggregate"][key])
         per_metric_avg = {k: sum(v) / len(v) for k, v in per_metric.items() if v}
+
+        # Add treatment match score (not in aggregate, computed from answers)
+        treatment_scores = []
+        for data in all_trajectory_data:
+            for admission in data["admissions"]:
+                a = admission.get("answers", {})
+                treatment_scores.append(self._treatment_match_score(a))
+        if treatment_scores:
+            per_metric_avg["Treatment Match"] = (
+                sum(treatment_scores) / len(treatment_scores)
+            )
 
         return composite, per_metric_avg, per_pathology
 
@@ -662,6 +697,11 @@ class ClinicalEvoTest:
                     metric_lines.append(f"- **Imaging score avg**: {val:.2f}")
                 elif key == "Invalid Tools":
                     metric_lines.append(f"- **Invalid tools avg**: {val:.2f}")
+                elif key == "Treatment Match":
+                    metric_lines.append(
+                        f"- **Treatment match**: {val:.0%} — "
+                        f"{'critical gap — agent must recommend appropriate treatment' if val < 0.5 else 'reasonable, maintain or improve'}"
+                    )
         metric_section = "\n".join(metric_lines) if metric_lines else "(no metric data)"
 
         # --- Section 3: Failed trajectories ---
@@ -761,7 +801,7 @@ The skill should be written as markdown with clear step-by-step instructions:
 - How to select labs based on exam findings (not shotgun ordering)
 - How to choose imaging modality based on suspected pathology location
 - How to interpret lab values in context
-- When to recommend surgical vs conservative treatment
+- **How to recommend treatment** — ALWAYS include a Treatment section with: (a) surgical vs conservative management based on severity, (b) antibiotics if infection suspected, (c) supportive care (IV fluids, analgesia, monitoring). Treatment recommendations are scored and directly affect the composite score.
 - How to maintain and update a differential diagnosis after each observation"""
 
         if self.args.patient_simulator.lower() == "true":

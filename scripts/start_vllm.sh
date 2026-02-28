@@ -10,6 +10,7 @@ set -euo pipefail
 # Usage:
 #   bash scripts/start_vllm.sh              # default: Qwen3-30B-A3B
 #   bash scripts/start_vllm.sh --qwen35     # Qwen3.5-35B-A3B (text-only)
+#   bash scripts/start_vllm.sh --qwen3next  # Qwen3-Next-80B-A3B-FP8 (with MTP)
 #   bash scripts/start_vllm.sh --tool-call  # enable tool calling (for SDK)
 #   bash scripts/start_vllm.sh --qwen35 --tool-call  # combine flags
 #
@@ -28,16 +29,23 @@ VLLM_PORT=8000
 
 # Parse flags
 USE_QWEN35=false
+USE_QWEN3NEXT=false
 TOOL_CALL=false
 for arg in "$@"; do
     case "$arg" in
-        --qwen35)    USE_QWEN35=true ;;
-        --tool-call) TOOL_CALL=true ;;
+        --qwen35)     USE_QWEN35=true ;;
+        --qwen3next)  USE_QWEN3NEXT=true ;;
+        --tool-call)  TOOL_CALL=true ;;
     esac
 done
 
 # Model-specific configuration
-if $USE_QWEN35; then
+if $USE_QWEN3NEXT; then
+    VLLM_MODEL="Qwen/Qwen3-Next-80B-A3B-Instruct-FP8"
+    VLLM_MAX_LEN=32768
+    SIF="${MIMIC_SIF_QWEN35:-/cbica/home/hanti/containers/vllm-openai_nightly.sif}"
+    OVERLAY="${MIMIC_OVERLAY_QWEN35:-/cbica/home/hanti/containers/vllm_overlay_qwen35.img}"
+elif $USE_QWEN35; then
     VLLM_MODEL="Qwen/Qwen3.5-35B-A3B"
     VLLM_MAX_LEN=32768
     SIF="${MIMIC_SIF_QWEN35:-/cbica/home/hanti/containers/vllm-openai_nightly.sif}"
@@ -66,6 +74,12 @@ if $USE_QWEN35; then
     VLLM_EXTRA_ARGS="$VLLM_EXTRA_ARGS \
         --reasoning-parser qwen3 \
         --language-model-only"
+fi
+
+# Qwen3-Next-specific flags (MTP for speculative decoding)
+if $USE_QWEN3NEXT; then
+    VLLM_EXTRA_ARGS="$VLLM_EXTRA_ARGS \
+        --speculative-config '{\"method\":\"qwen3_next_mtp\",\"num_speculative_tokens\":2}'"
 fi
 
 # GH200 performance tuning

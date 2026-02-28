@@ -100,6 +100,15 @@ def identify_failures(data):
         if scores.get("Invalid Tools", 0) > 0:
             reasons.append("hallucinated_tools")
 
+        # Treatment failures
+        answers = admission.get("answers", {})
+        required = answers.get("Treatment Required", {})
+        requested = answers.get("Treatment Requested", {})
+        if required:
+            missing = [k for k, v in required.items() if v and not requested.get(k, False)]
+            if missing:
+                reasons.append(f"missing_treatment({','.join(missing)})")
+
         if reasons:
             failures.append({
                 "admission": admission,
@@ -137,6 +146,18 @@ def format_trajectory_summary(admission, pathology=None):
                  f"Labs={scores.get('Laboratory Tests', '?')} "
                  f"Imaging={scores.get('Imaging', '?')} "
                  f"Rounds={scores.get('Rounds', '?')}")
+
+    # Treatment analysis
+    answers = admission.get("answers", {})
+    required = answers.get("Treatment Required", {})
+    requested = answers.get("Treatment Requested", {})
+    if required:
+        req_items = [k for k, v in required.items() if v]
+        got_items = [k for k in req_items if requested.get(k, False)]
+        missed = [k for k in req_items if not requested.get(k, False)]
+        lines.append(f"**Treatment**: required={req_items}, "
+                     f"agent_recommended={got_items}"
+                     + (f", **MISSING={missed}**" if missed else ""))
     return "\n".join(lines)
 
 
@@ -151,11 +172,25 @@ def format_discharge_summary(admission):
     return ds
 
 
+def _treatment_match_for_admission(admission):
+    """Fraction of required treatments that the agent correctly requested."""
+    answers = admission.get("answers", {})
+    required = answers.get("Treatment Required", {})
+    requested = answers.get("Treatment Requested", {})
+    if not required:
+        return 0.0
+    n_required = sum(1 for v in required.values() if v)
+    if n_required == 0:
+        return 0.0
+    n_correct = sum(1 for k, v in required.items() if v and requested.get(k, False))
+    return n_correct / n_required
+
+
 def build_aggregate_table(all_data):
     """Build aggregate scores table across all pathologies."""
     lines = [
-        "| Pathology | N | Diagnosis | PE First | Labs (avg) | Imaging (avg) | Invalid Tools |",
-        "|---|---|---|---|---|---|---|",
+        "| Pathology | N | Diagnosis | PE First | Labs (avg) | Imaging (avg) | Treatment | Invalid Tools |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for i, data in enumerate(all_data):
         agg = data["aggregate"]
@@ -167,11 +202,13 @@ def build_aggregate_table(all_data):
         labs_avg = agg.get("Laboratory Tests", 0)
         img_avg = agg.get("Imaging", 0)
         inv_total = sum(a["scores"].get("Invalid Tools", 0) for a in data["admissions"])
+        trt_scores = [_treatment_match_for_admission(a) for a in data["admissions"]]
+        trt_avg = sum(trt_scores) / len(trt_scores) if trt_scores else 0.0
 
         lines.append(
             f"| {label} | {n} | {n_dx}/{n} ({100*n_dx/n:.0f}%) | "
             f"{n_pe}/{n} ({100*n_pe/n:.0f}%) | {labs_avg:.2f} | "
-            f"{img_avg:.2f} | {inv_total} |"
+            f"{img_avg:.2f} | {100*trt_avg:.0f}% | {inv_total} |"
         )
 
     # Totals row
@@ -188,9 +225,11 @@ def build_aggregate_table(all_data):
         sum(a["scores"].get("Invalid Tools", 0) for a in d["admissions"])
         for d in all_data
     )
+    all_trt = [_treatment_match_for_admission(a) for d in all_data for a in d["admissions"]]
+    total_trt = sum(all_trt) / len(all_trt) if all_trt else 0.0
     lines.append(
         f"| **TOTAL** | {total_n} | {total_dx}/{total_n} ({100*total_dx/total_n:.0f}%) | "
-        f"{total_pe}/{total_n} ({100*total_pe/total_n:.0f}%) | - | - | {total_inv} |"
+        f"{total_pe}/{total_n} ({100*total_pe/total_n:.0f}%) | - | - | {100*total_trt:.0f}% | {total_inv} |"
     )
     return "\n".join(lines)
 
