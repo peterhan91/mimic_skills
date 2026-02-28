@@ -10,6 +10,7 @@ set -euo pipefail
 # Usage:
 #   bash scripts/start_vllm.sh              # default: Qwen3-30B-A3B
 #   bash scripts/start_vllm.sh --qwen35     # Qwen3.5-35B-A3B (text-only)
+#   bash scripts/start_vllm.sh --qwen35-27b # Qwen3.5-27B dense (text-only, with MTP)
 #   bash scripts/start_vllm.sh --qwen3next  # Qwen3-Next-80B-A3B-FP8 (with MTP)
 #   bash scripts/start_vllm.sh --tool-call  # enable tool calling (for SDK)
 #   bash scripts/start_vllm.sh --qwen35 --tool-call  # combine flags
@@ -29,19 +30,26 @@ VLLM_PORT=8000
 
 # Parse flags
 USE_QWEN35=false
+USE_QWEN35_27B=false
 USE_QWEN3NEXT=false
 TOOL_CALL=false
 for arg in "$@"; do
     case "$arg" in
-        --qwen35)     USE_QWEN35=true ;;
-        --qwen3next)  USE_QWEN3NEXT=true ;;
-        --tool-call)  TOOL_CALL=true ;;
+        --qwen35)      USE_QWEN35=true ;;
+        --qwen35-27b)  USE_QWEN35_27B=true ;;
+        --qwen3next)   USE_QWEN3NEXT=true ;;
+        --tool-call)   TOOL_CALL=true ;;
     esac
 done
 
 # Model-specific configuration
 if $USE_QWEN3NEXT; then
     VLLM_MODEL="Qwen/Qwen3-Next-80B-A3B-Instruct-FP8"
+    VLLM_MAX_LEN=32768
+    SIF="${MIMIC_SIF_QWEN35:-/cbica/home/hanti/containers/vllm-openai_nightly.sif}"
+    OVERLAY="${MIMIC_OVERLAY_QWEN35:-/cbica/home/hanti/containers/vllm_overlay_qwen35.img}"
+elif $USE_QWEN35_27B; then
+    VLLM_MODEL="Qwen/Qwen3.5-27B"
     VLLM_MAX_LEN=32768
     SIF="${MIMIC_SIF_QWEN35:-/cbica/home/hanti/containers/vllm-openai_nightly.sif}"
     OVERLAY="${MIMIC_OVERLAY_QWEN35:-/cbica/home/hanti/containers/vllm_overlay_qwen35.img}"
@@ -61,23 +69,23 @@ VLLM_EXTRA_ARGS=""
 
 # Tool calling
 if $TOOL_CALL; then
-    if $USE_QWEN35; then
+    if $USE_QWEN35 || $USE_QWEN35_27B; then
         VLLM_EXTRA_ARGS="--enable-auto-tool-choice --tool-call-parser qwen3_coder"
     else
         VLLM_EXTRA_ARGS="--enable-auto-tool-choice --tool-call-parser hermes"
     fi
 fi
 
-# Qwen3.5-specific flags
-if $USE_QWEN35; then
+# Qwen3.5-specific flags (applies to both 35B-A3B and 27B)
+if $USE_QWEN35 || $USE_QWEN35_27B; then
     # Reasoning parser for thinking mode, text-only to skip vision encoder
     VLLM_EXTRA_ARGS="$VLLM_EXTRA_ARGS \
         --reasoning-parser qwen3 \
         --language-model-only"
 fi
 
-# Qwen3-Next-specific flags (MTP for speculative decoding)
-if $USE_QWEN3NEXT; then
+# MTP speculative decoding (Qwen3-Next and Qwen3.5-27B)
+if $USE_QWEN3NEXT || $USE_QWEN35_27B; then
     VLLM_EXTRA_ARGS="$VLLM_EXTRA_ARGS \
         --speculative-config '{\"method\":\"qwen3_next_mtp\",\"num_speculative_tokens\":2}'"
 fi
@@ -122,7 +130,7 @@ if [ -d "$PROJECT/moe_configs" ]; then
 fi
 
 # Python binary: nightly SIF uses python3 (no python symlink)
-if $USE_QWEN35; then
+if $USE_QWEN35 || $USE_QWEN35_27B || $USE_QWEN3NEXT; then
     PYTHON_BIN="python3"
 else
     PYTHON_BIN="python"
