@@ -53,8 +53,6 @@ TOT_MAX_DEPTH=""
 TOT_BREADTH=""
 TOT_N_GENERATE=""
 TOT_TEMPERATURE=""
-TOT_EVAL_MODE=""
-RUN_TAG=""
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
         --resume)
@@ -73,10 +71,6 @@ while [[ "${1:-}" == --* ]]; do
             TOT_N_GENERATE="${2:?--tot-n-generate requires a value}"; shift 2 ;;
         --tot-temperature)
             TOT_TEMPERATURE="${2:?--tot-temperature requires a value}"; shift 2 ;;
-        --tot-eval-mode)
-            TOT_EVAL_MODE="${2:?--tot-eval-mode requires a value (llm or combined)}"; shift 2 ;;
-        --run-tag)
-            RUN_TAG="${2:?--run-tag requires a value}"; shift 2 ;;
         *)
             echo "Unknown flag: $1" >&2; exit 1 ;;
     esac
@@ -89,24 +83,22 @@ ANNOTATE_CLINICAL="${4:-True}"
 INITIAL_SKILL="${5:-}"
 
 # Agent × patient-sim → 2×2 matrix of parallel experiment dirs
-TAG_SUFFIX=""
-[ -n "$RUN_TAG" ] && TAG_SUFFIX="_${RUN_TAG}"
 if [ "$AGENT" = "ToT" ] && [ "$PATIENT_SIMULATOR" = "True" ]; then
-    SKILLS_DIR="$PROJECT_DIR/skills/evo_tot_patsim${TAG_SUFFIX}"
-    STATE_FILE="$PROJECT_DIR/evotest_state_tot_patsim${TAG_SUFFIX}/state.json"
-    RUN_PREFIX="totps${TAG_SUFFIX}"
+    SKILLS_DIR="$PROJECT_DIR/skills/evo_tot_patsim"
+    STATE_FILE="$PROJECT_DIR/evotest_state_tot_patsim/state.json"
+    RUN_PREFIX="totps"
 elif [ "$AGENT" = "ToT" ]; then
-    SKILLS_DIR="$PROJECT_DIR/skills/evo_tot${TAG_SUFFIX}"
-    STATE_FILE="$PROJECT_DIR/evotest_state_tot${TAG_SUFFIX}/state.json"
-    RUN_PREFIX="tot${TAG_SUFFIX}"
+    SKILLS_DIR="$PROJECT_DIR/skills/evo_tot"
+    STATE_FILE="$PROJECT_DIR/evotest_state_tot/state.json"
+    RUN_PREFIX="tot"
 elif [ "$PATIENT_SIMULATOR" = "True" ]; then
-    SKILLS_DIR="$PROJECT_DIR/skills/evo_patsim${TAG_SUFFIX}"
-    STATE_FILE="$PROJECT_DIR/evotest_state_patsim${TAG_SUFFIX}/state.json"
-    RUN_PREFIX="evops${TAG_SUFFIX}"
+    SKILLS_DIR="$PROJECT_DIR/skills/evo_patsim"
+    STATE_FILE="$PROJECT_DIR/evotest_state_patsim/state.json"
+    RUN_PREFIX="evops"
 else
-    SKILLS_DIR="$PROJECT_DIR/skills/evo${TAG_SUFFIX}"
-    STATE_FILE="$PROJECT_DIR/evotest_state${TAG_SUFFIX}/state.json"
-    RUN_PREFIX="evo${TAG_SUFFIX}"
+    SKILLS_DIR="$PROJECT_DIR/skills/evo"
+    STATE_FILE="$PROJECT_DIR/evotest_state/state.json"
+    RUN_PREFIX="evo"
 fi
 
 # Detect Python (micromamba env, MIMIC_PYTHON override, or bare python)
@@ -203,8 +195,6 @@ fi
 [ -n "$TOT_BREADTH" ]    && EVOTEST_CMD+=(--tot-breadth "$TOT_BREADTH")
 [ -n "$TOT_N_GENERATE" ] && EVOTEST_CMD+=(--tot-n-generate "$TOT_N_GENERATE")
 [ -n "$TOT_TEMPERATURE" ] && EVOTEST_CMD+=(--tot-temperature "$TOT_TEMPERATURE")
-[ -n "$TOT_EVAL_MODE" ]  && EVOTEST_CMD+=(--tot-eval-mode "$TOT_EVAL_MODE")
-[ -n "$RUN_TAG" ]        && EVOTEST_CMD+=(--run-tag "$RUN_TAG")
 
 # Parallel pathologies
 [ "$PARALLEL_PATHOLOGIES" = true ] && EVOTEST_CMD+=(--parallel-pathologies)

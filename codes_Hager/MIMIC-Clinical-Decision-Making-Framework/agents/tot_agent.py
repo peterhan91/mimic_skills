@@ -17,7 +17,7 @@ from langchain.schema import AgentFinish
 from loguru import logger
 
 from agents.AgentAction import AgentAction
-from agents.DiagnosisWorkflowParser import DiagnosisWorkflowParser, InvalidActionError
+from agents.DiagnosisWorkflowParser import DiagnosisWorkflowParser
 from agents.prompts import (
     CHAT_TEMPLATE,
     DIAG_CRIT_TOOL_DESCR,
@@ -27,13 +27,6 @@ from agents.prompts import (
     ASK_PATIENT_TOOL_USE_EXAMPLE,
 )
 from agents.tot_prompts import TOT_EVALUATION_PROMPT
-from evaluators.appendicitis_evaluator import AppendicitisEvaluator
-from evaluators.cholecystitis_evaluator import CholecystitisEvaluator
-from evaluators.diverticulitis_evaluator import DiverticulitisEvaluator
-from evaluators.pancreatitis_evaluator import PancreatitisEvaluator
-from evaluators.cholangitis_evaluator import CholangitisEvaluator
-from evaluators.bowel_obstruction_evaluator import BowelObstructionEvaluator
-from evaluators.pyelonephritis_evaluator import PyelonephritisEvaluator
 from tools.Tools import (
     DoPhysicalExamination,
     ReadDiagnosticCriteria,
@@ -42,28 +35,6 @@ from tools.Tools import (
 )
 from tools.utils import action_input_pretty_printer
 from utils.nlp import calculate_num_tokens
-
-# Maps pathology name → evaluator class (for GRPO rubric eval)
-EVALUATOR_MAP = {
-    "appendicitis": AppendicitisEvaluator,
-    "cholecystitis": CholecystitisEvaluator,
-    "diverticulitis": DiverticulitisEvaluator,
-    "pancreatitis": PancreatitisEvaluator,
-    "cholangitis": CholangitisEvaluator,
-    "bowel_obstruction": BowelObstructionEvaluator,
-    "pyelonephritis": PyelonephritisEvaluator,
-}
-
-# Max "Laboratory Tests" score per pathology (1 point per required category)
-MAX_LAB_SCORE = {
-    "appendicitis": 1,
-    "cholecystitis": 3,
-    "diverticulitis": 1,
-    "pancreatitis": 3,
-    "cholangitis": 3,
-    "bowel_obstruction": 2,
-    "pyelonephritis": 3,
-}
 
 
 @dataclass
@@ -121,8 +92,6 @@ class TreeOfThoughtsRunner:
         temperature: float = 0.7,
         eval_temperature: float = 0.0,
         patient_simulator=None,
-        eval_mode: str = "combined",
-        pathology: Optional[str] = None,
     ):
         self.llm = llm
         self.prompt = prompt
@@ -138,8 +107,6 @@ class TreeOfThoughtsRunner:
         self.temperature = temperature
         self.eval_temperature = eval_temperature
         self.patient_simulator = patient_simulator
-        self.eval_mode = eval_mode
-        self.pathology = pathology
         self.cache = ToolResultCache()
 
     # ── public interface (matches AgentExecutor.__call__) ────────────
@@ -170,16 +137,8 @@ class TreeOfThoughtsRunner:
                 break
 
             # EVALUATE each candidate
-            if self.eval_mode == "grpo" and self._has_ground_truth():
-                self._evaluate_grpo(candidates, patient_input, depth)
-            elif self.eval_mode == "grpo":
-                # Fallback: no ground truth available (test time)
-                self._evaluate_combined(candidates, patient_input, depth)
-            elif self.eval_mode == "combined":
-                self._evaluate_combined(candidates, patient_input, depth)
-            else:
-                for c in candidates:
-                    c.value = self._evaluate_state(c, patient_input, depth)
+            for c in candidates:
+                c.value = self._evaluate_state(c, patient_input, depth)
 
             # SELECT top-b
             candidates.sort(key=lambda s: s.value, reverse=True)
@@ -301,161 +260,6 @@ class TreeOfThoughtsRunner:
             score = int(match.group())
             return float(min(max(score, 1), 10))
         return 5.0  # default if parsing fails
-
-    # ── COMBINED EVALUATION (structural + LLM) ─────────────────────
-
-    def _compute_structural_reward(self, state: ToTState) -> float:
-        """Lean structural checks — PE ordering, invalid tools, duplicates.
-
-        Deliberately omits lab and imaging scoring: the old GRPO reward
-        gave +0.5 per union-lab hit, incentivising over-ordering (failure
-        mode #6 from the paper).  Semantic assessment of lab relevance and
-        imaging appropriateness is left to the LLM evaluator.
-        """
-        reward = 0.0
-        seen_actions: set = set()
-
-        for idx, (action, _observation) in enumerate(state.intermediate_steps):
-            tool = action.tool
-
-            # Duplicate detection
-            dedup_key = (tool, str(action.tool_input))
-            if dedup_key in seen_actions:
-                reward -= 0.5
-                continue
-            seen_actions.add(dedup_key)
-
-            # Invalid / hallucinated tool
-            if tool == InvalidActionError.invalid_tool_str:
-                reward -= 1.0
-                continue
-
-            # PE: full credit if first action, partial if late
-            if tool == "Physical Examination":
-                reward += 2.0 if idx == 0 else 0.5
-
-        # Mild efficiency pressure
-        reward -= len(state.intermediate_steps) * 0.1
-        return reward
-
-    @staticmethod
-    def _normalize(values: List[float]) -> List[float]:
-        """Zero-mean, unit-variance normalisation with skip trick."""
-        n = len(values)
-        if n == 0:
-            return []
-        mean = sum(values) / n
-        var = sum((v - mean) ** 2 for v in values) / n
-        std = var ** 0.5
-        if std < 1e-4:
-            return [0.0] * n
-        return [(v - mean) / (std + 1e-4) for v in values]
-
-    def _evaluate_combined(
-        self, candidates: List[ToTState], patient_input: str, depth: int
-    ) -> None:
-        """Structural guardrails (0.3) + LLM semantic judgement (0.7).
-
-        Both signals are independently normalised to zero-mean unit-variance
-        before combining, so neither dominates due to scale differences.
-        """
-        if not candidates:
-            return
-
-        # Structural signal — instant, deterministic
-        struct_rewards = [self._compute_structural_reward(c) for c in candidates]
-        struct_adv = self._normalize(struct_rewards)
-
-        # Semantic signal — LLM-as-judge
-        llm_scores = [
-            self._evaluate_state(c, patient_input, depth) for c in candidates
-        ]
-        llm_adv = self._normalize(llm_scores)
-
-        # Weighted combination: LLM dominates, structure guards
-        for c, sa, la in zip(candidates, struct_adv, llm_adv):
-            c.value = 0.3 * sa + 0.7 * la
-
-        logger.info(
-            f"[ToT-combined] structural={[round(r, 2) for r in struct_rewards]} "
-            f"llm={[round(s, 1) for s in llm_scores]} "
-            f"final={[round(c.value, 2) for c in candidates]}"
-        )
-
-    # ── GRPO RUBRIC EVALUATION ──────────────────────────────────────
-
-    def _has_ground_truth(self) -> bool:
-        """Check if patient dict has ground-truth data for rubric scoring."""
-        return bool(self.patient.get("Discharge Diagnosis"))
-
-    def _build_reference_tuple(self) -> tuple:
-        """Build the 5-element reference tuple for PathologyEvaluator."""
-        return (
-            self.patient.get("Discharge Diagnosis", ""),
-            self.patient.get("ICD Diagnosis", []),
-            self.patient.get("Procedures ICD9", []),
-            self.patient.get("Procedures ICD10", []),
-            self.patient.get("Procedures Discharge", []),
-        )
-
-    def _compute_rubric_reward(self, state: ToTState, patient_input: str) -> float:
-        """Force-finish a candidate and score it with the real PathologyEvaluator.
-
-        Returns the composite reward (same formula as evotest_clinical.py).
-        """
-        # Force-finish to get diagnosis + treatment text
-        finished = self._force_finish(state, patient_input)
-
-        # Fresh evaluator (has mutable state)
-        evaluator_cls = EVALUATOR_MAP.get(self.pathology)
-        if evaluator_cls is None:
-            logger.warning(f"[ToT-grpo] No evaluator for pathology={self.pathology}, returning 0")
-            return 0.0
-        evaluator = evaluator_cls()
-
-        reference = self._build_reference_tuple()
-
-        eval_result = evaluator._evaluate_agent_trajectory(
-            prediction=finished.prediction,
-            input=patient_input,
-            agent_trajectory=finished.intermediate_steps,
-            reference=reference,
-        )
-
-        s = eval_result["scores"]
-        max_lab = MAX_LAB_SCORE.get(self.pathology, 1)
-
-        reward = (
-            3.0 * s.get("Diagnosis", 0)
-            + 1.0 * s.get("Physical Examination", 0)
-            + 0.5 * s.get("Late Physical Examination", 0)
-            + 1.0 * min(s.get("Laboratory Tests", 0) / max_lab, 1.0)
-            + 1.0 * min(s.get("Imaging", 0) / 2.0, 1.0)
-            - 0.5 * min(s.get("Invalid Tools", 0), 2)
-            - 0.3 * (1 - s.get("Action Parsing", 0))
-        )
-        return reward
-
-    def _evaluate_grpo(
-        self, candidates: List[ToTState], patient_input: str, depth: int
-    ) -> None:
-        """GRPO-style evaluation: rubric rewards → normalize → set c.value."""
-        if not candidates:
-            return
-
-        raw_rewards = [
-            self._compute_rubric_reward(c, patient_input) for c in candidates
-        ]
-        advantages = self._normalize(raw_rewards)
-
-        for c, adv in zip(candidates, advantages):
-            c.value = adv
-
-        logger.info(
-            f"[ToT-grpo] depth={depth} "
-            f"raw_rewards={[round(r, 3) for r in raw_rewards]} "
-            f"advantages={[round(a, 3) for a in advantages]}"
-        )
 
     # ── TOOL EXECUTION ──────────────────────────────────────────────
 
@@ -623,8 +427,6 @@ def build_tot_runner(
     tot_max_depth=20,
     tot_temperature=1.0,
     tot_eval_temperature=0.0,
-    tot_eval_mode="combined",
-    pathology=None,
 ):
     """Build a TreeOfThoughtsRunner with the same interface as build_agent_executor_ZeroShot."""
     with open(lab_test_mapping_path, "rb") as f:
@@ -740,6 +542,4 @@ def build_tot_runner(
         temperature=tot_temperature,
         eval_temperature=tot_eval_temperature,
         patient_simulator=patient_simulator,
-        eval_mode=tot_eval_mode,
-        pathology=pathology,
     )

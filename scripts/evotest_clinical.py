@@ -244,25 +244,22 @@ class ClinicalEvoTest:
         is_tot = self.agent_type == "ToT"
         is_patsim = getattr(args, "patient_simulator", "False").lower() == "true"
 
-        tag = getattr(args, "run_tag", None) or ""
-        tag_suffix = f"_{tag}" if tag else ""
-
         if is_tot and is_patsim:
-            self.state_dir = PROJECT_DIR / f"evotest_state_tot_patsim{tag_suffix}"
-            self.skills_dir = PROJECT_DIR / "skills" / f"evo_tot_patsim{tag_suffix}"
-            self._run_prefix = f"totps{tag_suffix}"
+            self.state_dir = PROJECT_DIR / "evotest_state_tot_patsim"
+            self.skills_dir = PROJECT_DIR / "skills" / "evo_tot_patsim"
+            self._run_prefix = "totps"
         elif is_tot:
-            self.state_dir = PROJECT_DIR / f"evotest_state_tot{tag_suffix}"
-            self.skills_dir = PROJECT_DIR / "skills" / f"evo_tot{tag_suffix}"
-            self._run_prefix = f"tot{tag_suffix}"
+            self.state_dir = PROJECT_DIR / "evotest_state_tot"
+            self.skills_dir = PROJECT_DIR / "skills" / "evo_tot"
+            self._run_prefix = "tot"
         elif is_patsim:
-            self.state_dir = PROJECT_DIR / f"evotest_state_patsim{tag_suffix}"
-            self.skills_dir = PROJECT_DIR / "skills" / f"evo_patsim{tag_suffix}"
-            self._run_prefix = f"evops{tag_suffix}"
+            self.state_dir = PROJECT_DIR / "evotest_state_patsim"
+            self.skills_dir = PROJECT_DIR / "skills" / "evo_patsim"
+            self._run_prefix = "evops"
         else:
-            self.state_dir = PROJECT_DIR / f"evotest_state{tag_suffix}" if tag else STATE_DIR
-            self.skills_dir = PROJECT_DIR / "skills" / f"evo{tag_suffix}"
-            self._run_prefix = f"evo{tag_suffix}"
+            self.state_dir = STATE_DIR
+            self.skills_dir = PROJECT_DIR / "skills" / "evo"
+            self._run_prefix = "evo"
         self.state_file = self.state_dir / "state.json"
         self.episode_log = self.state_dir / "episode_log.jsonl"
 
@@ -474,8 +471,7 @@ class ClinicalEvoTest:
             run_cmd.append(f"agent={self.agent_type}")
         if self.agent_type == "ToT":
             for key in ("tot_n_generate", "tot_breadth", "tot_max_depth",
-                        "tot_temperature", "tot_eval_temperature",
-                        "tot_eval_mode"):
+                        "tot_temperature", "tot_eval_temperature"):
                 val = getattr(self.args, key, None)
                 if val is not None:
                     run_cmd.append(f"{key}={val}")
@@ -1231,19 +1227,9 @@ def main():
         help="ToT: temperature for path evaluation (default: from config)"
     )
     parser.add_argument(
-        "--tot-eval-mode", type=str, default=None, dest="tot_eval_mode",
-        choices=["llm", "combined", "grpo"],
-        help="ToT: evaluation mode — 'llm' (LLM-as-judge only), 'combined' (structural guardrails + LLM), or 'grpo' (GRPO-style rubric eval, training only)"
-    )
-    parser.add_argument(
         "--parallel-pathologies", action="store_true",
         help="Run pathologies in parallel within each episode (each pathology "
              "is a separate subprocess, safe for Strategy B)"
-    )
-    parser.add_argument(
-        "--run-tag", type=str, default=None, dest="run_tag",
-        help="Tag appended to output dirs (skills, state, trajectories) to "
-             "isolate parallel experiments, e.g. --run-tag v2 → evo_tot_patsim_v2"
     )
     parser.add_argument(
         "--dry-run", action="store_true",
