@@ -6,6 +6,7 @@ openai_api_key: ${oc.env:OPENAI_API_KEY,""}
 
 model_name: gpt-5-mini
 max_context_length: 400000
+reasoning_effort: medium
 exllama: False
 
 system_tag_start: "<|im_start|>system"

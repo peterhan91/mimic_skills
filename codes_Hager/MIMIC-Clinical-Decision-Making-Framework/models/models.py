@@ -48,6 +48,7 @@ class CustomLLM(LLM):
     anthropic_api_key: str = None
     anthropic_client: Any = None
     vllm_base_url: str = None
+    reasoning_effort: str = None
     tags: Dict[str, str] = None
 
     @property
@@ -430,16 +431,20 @@ class CustomLLM(LLM):
                 self.tags,
             )
 
-            # GPT-5 family: no stop sequences; gpt-5-mini also lacks temperature/seed control
+            # GPT-5 family: no stop sequences; reasoning models need special handling
             _no_stop = self.model_name.startswith("gpt-5")
-            _no_temp = self.model_name.startswith("gpt-5-mini")
+            _reasoning = getattr(self, "reasoning_effort", None)
             api_kwargs = dict(
                 model=self.model_name,
                 messages=messages,
             )
-            if not _no_temp:
-                api_kwargs["temperature"] = 0.0
-                api_kwargs["seed"] = self.seed
+            # temperature/seed only supported when reasoning effort is "none" or absent
+            if _reasoning and _reasoning != "none":
+                api_kwargs["reasoning_effort"] = _reasoning
+            else:
+                if not self.model_name.startswith("gpt-5-mini"):
+                    api_kwargs["temperature"] = 0.0
+                    api_kwargs["seed"] = self.seed
             if STOP_WORDS and not _no_stop:
                 api_kwargs["stop"] = STOP_WORDS
 
@@ -449,19 +454,37 @@ class CustomLLM(LLM):
         elif self.anthropic_api_key:
             system_text, messages = self._build_anthropic_messages(prompt)
 
-            api_kwargs = dict(
-                model=self.model_name,
-                messages=messages,
-                max_tokens=4096,
-                temperature=0.0,
-            )
+            _effort = getattr(self, "reasoning_effort", None)
+            if _effort and _effort != "none":
+                # Extended thinking: no temperature, higher max_tokens
+                api_kwargs = dict(
+                    model=self.model_name,
+                    messages=messages,
+                    max_tokens=16000,
+                    thinking={"type": "adaptive"},
+                    output_config={"effort": _effort},
+                )
+            else:
+                api_kwargs = dict(
+                    model=self.model_name,
+                    messages=messages,
+                    max_tokens=4096,
+                    temperature=0.0,
+                )
             if system_text:
                 api_kwargs["system"] = system_text
             if STOP_WORDS:
                 api_kwargs["stop_sequences"] = STOP_WORDS
 
             response = self.anthropic_completion_with_backoff(**api_kwargs)
-            output = response.content[0].text
+            # With thinking enabled, response may contain thinking blocks + text blocks
+            output = None
+            for block in response.content:
+                if block.type == "text":
+                    output = block.text
+                    break
+            if output is None:
+                output = response.content[0].text
 
         elif self.exllama:
             with torch.inference_mode():
@@ -580,14 +603,17 @@ class CustomLLM(LLM):
         elif self.openai_api_key:
             messages = extract_sections(prompt, self.tags)
             _no_stop = self.model_name.startswith("gpt-5")
-            _no_temp = self.model_name.startswith("gpt-5-mini")
+            _reasoning = getattr(self, "reasoning_effort", None)
             api_kwargs = dict(
                 model=self.model_name,
                 messages=messages,
             )
-            if not _no_temp:
-                api_kwargs["temperature"] = temperature
-                api_kwargs["seed"] = None if temperature > 0 else self.seed
+            if _reasoning and _reasoning != "none":
+                api_kwargs["reasoning_effort"] = _reasoning
+            else:
+                if not self.model_name.startswith("gpt-5-mini"):
+                    api_kwargs["temperature"] = temperature
+                    api_kwargs["seed"] = None if temperature > 0 else self.seed
             if STOP_WORDS and not _no_stop:
                 api_kwargs["stop"] = STOP_WORDS
 
@@ -597,19 +623,35 @@ class CustomLLM(LLM):
         elif self.anthropic_api_key:
             system_text, messages = self._build_anthropic_messages(prompt)
 
-            api_kwargs = dict(
-                model=self.model_name,
-                messages=messages,
-                max_tokens=4096,
-                temperature=temperature,
-            )
+            _effort = getattr(self, "reasoning_effort", None)
+            if _effort and _effort != "none":
+                api_kwargs = dict(
+                    model=self.model_name,
+                    messages=messages,
+                    max_tokens=16000,
+                    thinking={"type": "adaptive"},
+                    output_config={"effort": _effort},
+                )
+            else:
+                api_kwargs = dict(
+                    model=self.model_name,
+                    messages=messages,
+                    max_tokens=4096,
+                    temperature=temperature,
+                )
             if system_text:
                 api_kwargs["system"] = system_text
             if STOP_WORDS:
                 api_kwargs["stop_sequences"] = STOP_WORDS
 
             response = self.anthropic_completion_with_backoff(**api_kwargs)
-            output = response.content[0].text
+            output = None
+            for block in response.content:
+                if block.type == "text":
+                    output = block.text
+                    break
+            if output is None:
+                output = response.content[0].text
 
         elif self.exllama:
             with torch.inference_mode():

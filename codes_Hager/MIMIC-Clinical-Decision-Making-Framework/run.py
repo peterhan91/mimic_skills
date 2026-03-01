@@ -105,6 +105,7 @@ def run(args: DictConfig):
         openai_api_key=args.get("openai_api_key", None),
         anthropic_api_key=args.get("anthropic_api_key", None),
         vllm_base_url=args.get("vllm_base_url", None),
+        reasoning_effort=args.get("reasoning_effort", None),
         tags=tags,
         max_context_length=args.max_context_length,
         exllama=args.exllama,

@@ -18,6 +18,8 @@ set -euo pipefail
 #   --annotate-clinical      Enable lab result annotations (Approach 3)
 #   --pathology P            Run only one pathology (can repeat)
 #   --parallel               Run models in parallel (one model at a time per pathology)
+#   --conda-env ENV          Run python via conda run -n ENV (default: mimic_cdm)
+#   --debug                  Debug mode: only 10 cases per pathology (uses train.pkl)
 #   --dry-run                Print commands without executing
 #
 # Examples:
@@ -45,7 +47,9 @@ SKILL_PATH=""
 SKILL_INJECT="examples"
 ANNOTATE_CLINICAL="False"
 CONDITION="abdominal"
+CONDA_ENV="mimic_cdm"
 PARALLEL=false
+DEBUG=false
 DRY_RUN=false
 SELECTED_PATHOLOGIES=()
 MODELS=()
@@ -75,6 +79,10 @@ while [[ "${1:-}" == --* ]]; do
             PARALLEL=true; shift ;;
         --condition)
             CONDITION="${2:?--condition requires a value (abdominal or chest)}"; shift 2 ;;
+        --conda-env)
+            CONDA_ENV="${2:?--conda-env requires an env name}"; shift 2 ;;
+        --debug)
+            DEBUG=true; shift ;;
         --dry-run)
             DRY_RUN=true; shift ;;
         *)
@@ -120,8 +128,11 @@ fi
 # --- Helpers ---
 die() { echo "ERROR: $1" >&2; exit 1; }
 
+# Python wrapper: use conda env
+PY() { conda run -n "$CONDA_ENV" python "$@"; }
+
 count_patients() {
-    python3 -c "import pickle; d=pickle.load(open('$1','rb')); print(len(d))"
+    PY -c "import pickle; d=pickle.load(open('$1','rb')); print(len(d))"
 }
 
 # --- Prerequisites ---
@@ -134,7 +145,11 @@ fi
 
 [ -f "$LAB_TEST_MAPPING" ] || die "Lab test mapping not found: $LAB_TEST_MAPPING"
 for P in "${PATHOLOGIES[@]}"; do
-    [ -f "$DATA_DIR/$P/test.pkl" ] || die "Test data not found: $DATA_DIR/$P/test.pkl"
+    if [ "$DEBUG" = true ]; then
+        [ -f "$DATA_DIR/$P/train.pkl" ] || die "Train data not found: $DATA_DIR/$P/train.pkl"
+    else
+        [ -f "$DATA_DIR/$P/test.pkl" ] || die "Test data not found: $DATA_DIR/$P/test.pkl"
+    fi
 done
 
 # --- Merge test + remaining if requested ---
@@ -145,7 +160,7 @@ if [ "$INCLUDE_REMAINING" = true ]; then
     for P in "${PATHOLOGIES[@]}"; do
         MERGED_PKL="$MERGED_DIR/${P}_test_remaining.pkl"
         if [ ! -f "$MERGED_PKL" ] || [ "$DATA_DIR/$P/test.pkl" -nt "$MERGED_PKL" ]; then
-            python3 -c "
+            PY -c "
 import pickle, sys
 merged = {}
 for split in ['test', 'remaining']:
@@ -162,8 +177,10 @@ print(f'  Merged $P: {len(merged)} patients (test + remaining)')
 " || die "Failed to merge pkls for $P"
         fi
     done
-    DATA_SUFFIX="_all"
-else
+    if [ "$DEBUG" != true ]; then
+        DATA_SUFFIX="_all"
+    fi
+elif [ "$DEBUG" != true ]; then
     DATA_SUFFIX="_test"
 fi
 
@@ -193,16 +210,22 @@ fi
 # --- Helper to get data file for a pathology ---
 get_data_file() {
     local P="$1"
-    if [ "$INCLUDE_REMAINING" = true ]; then
+    if [ "$DEBUG" = true ]; then
+        echo "$DATA_DIR/$P/train.pkl"
+    elif [ "$INCLUDE_REMAINING" = true ]; then
         echo "$MERGED_DIR/${P}_test_remaining.pkl"
     else
         echo "$DATA_DIR/$P/test.pkl"
     fi
 }
 
-DATA_LABEL="test only"
-if [ "$INCLUDE_REMAINING" = true ]; then
+if [ "$DEBUG" = true ]; then
+    DATA_LABEL="DEBUG (train only, ~10 cases)"
+    DATA_SUFFIX="_debug"
+elif [ "$INCLUDE_REMAINING" = true ]; then
     DATA_LABEL="test + remaining (all non-train)"
+else
+    DATA_LABEL="test only"
 fi
 
 echo "============================================================"
@@ -244,7 +267,7 @@ run_model_pathology() {
     local DESCR="_cloud_baseline${DATA_SUFFIX}${PATSIM_SUFFIX}${SKILL_SUFFIX}${ANNOT_SUFFIX}"
 
     local CMD=(
-        python run.py
+        conda run -n "$CONDA_ENV" python run.py
         pathology="$P"
         model="$MODEL"
         agent=ZeroShot
@@ -334,14 +357,14 @@ if [ "$DRY_RUN" = false ]; then
             if [ -n "$RUN_DIR" ]; then
                 echo ""
                 echo "--- Evaluate: $MODEL / $P ---"
-                python "$PROJECT_DIR/scripts/evaluate_run.py" \
+                PY "$PROJECT_DIR/scripts/evaluate_run.py" \
                     --results_dir "$RUN_DIR" \
                     --pathology "$P" \
                     --patient_data "$EVAL_DATA" \
                     || echo "  WARNING: Evaluation failed for $MODEL / $P"
 
                 TRAJ_FILE="$TRAJ_DIR/cloud_${MODEL}${DATA_SUFFIX}${PATSIM_SUFFIX}${SKILL_SUFFIX}${ANNOT_SUFFIX}_${P}.json"
-                python "$PROJECT_DIR/scripts/extract_trajectories.py" \
+                PY "$PROJECT_DIR/scripts/extract_trajectories.py" \
                     --results_dir "$RUN_DIR" \
                     --pathology "$P" \
                     --patient_data "$EVAL_DATA" \
