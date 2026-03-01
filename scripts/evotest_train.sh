@@ -50,6 +50,7 @@ AGENT="ZeroShot"
 PATIENT_SIMULATOR="True"
 PARALLEL_PATHOLOGIES=false
 CONDITION="abdominal"
+EXPERIMENT=""
 TOT_MAX_DEPTH=""
 TOT_BREADTH=""
 TOT_N_GENERATE=""
@@ -66,6 +67,8 @@ while [[ "${1:-}" == --* ]]; do
             PARALLEL_PATHOLOGIES=true; shift ;;
         --condition)
             CONDITION="${2:?--condition requires a value (abdominal or chest)}"; shift 2 ;;
+        --experiment)
+            EXPERIMENT="${2:?--experiment requires a suffix (e.g. mt1024)}"; shift 2 ;;
         --tot-max-depth)
             TOT_MAX_DEPTH="${2:?--tot-max-depth requires a value}"; shift 2 ;;
         --tot-breadth)
@@ -89,23 +92,27 @@ INITIAL_SKILL="${5:-}"
 COND_SUFFIX=""
 [ "$CONDITION" = "chest" ] && COND_SUFFIX="_chest"
 
+# Experiment suffix (e.g. _mt1024, _mt2048)
+EXP_SUFFIX=""
+[ -n "$EXPERIMENT" ] && EXP_SUFFIX="_${EXPERIMENT}"
+
 # Agent × patient-sim → 2×2 matrix of parallel experiment dirs
 if [ "$AGENT" = "ToT" ] && [ "$PATIENT_SIMULATOR" = "True" ]; then
-    SKILLS_DIR="$PROJECT_DIR/skills/evo_tot_patsim${COND_SUFFIX}"
-    STATE_FILE="$PROJECT_DIR/evotest_state_tot_patsim${COND_SUFFIX}/state.json"
-    RUN_PREFIX="totps"
+    SKILLS_DIR="$PROJECT_DIR/skills/evo_tot_patsim${COND_SUFFIX}${EXP_SUFFIX}"
+    STATE_FILE="$PROJECT_DIR/evotest_state_tot_patsim${COND_SUFFIX}${EXP_SUFFIX}/state.json"
+    RUN_PREFIX="totps${EXP_SUFFIX}"
 elif [ "$AGENT" = "ToT" ]; then
-    SKILLS_DIR="$PROJECT_DIR/skills/evo_tot${COND_SUFFIX}"
-    STATE_FILE="$PROJECT_DIR/evotest_state_tot${COND_SUFFIX}/state.json"
-    RUN_PREFIX="tot"
+    SKILLS_DIR="$PROJECT_DIR/skills/evo_tot${COND_SUFFIX}${EXP_SUFFIX}"
+    STATE_FILE="$PROJECT_DIR/evotest_state_tot${COND_SUFFIX}${EXP_SUFFIX}/state.json"
+    RUN_PREFIX="tot${EXP_SUFFIX}"
 elif [ "$PATIENT_SIMULATOR" = "True" ]; then
-    SKILLS_DIR="$PROJECT_DIR/skills/evo_patsim${COND_SUFFIX}"
-    STATE_FILE="$PROJECT_DIR/evotest_state_patsim${COND_SUFFIX}/state.json"
-    RUN_PREFIX="evops"
+    SKILLS_DIR="$PROJECT_DIR/skills/evo_patsim${COND_SUFFIX}${EXP_SUFFIX}"
+    STATE_FILE="$PROJECT_DIR/evotest_state_patsim${COND_SUFFIX}${EXP_SUFFIX}/state.json"
+    RUN_PREFIX="evops${EXP_SUFFIX}"
 else
-    SKILLS_DIR="$PROJECT_DIR/skills/evo${COND_SUFFIX}"
-    STATE_FILE="$PROJECT_DIR/evotest_state${COND_SUFFIX}/state.json"
-    RUN_PREFIX="evo"
+    SKILLS_DIR="$PROJECT_DIR/skills/evo${COND_SUFFIX}${EXP_SUFFIX}"
+    STATE_FILE="$PROJECT_DIR/evotest_state${COND_SUFFIX}${EXP_SUFFIX}/state.json"
+    RUN_PREFIX="evo${EXP_SUFFIX}"
 fi
 
 # Detect Python (micromamba env, MIMIC_PYTHON override, or bare python)
@@ -190,6 +197,11 @@ EVOTEST_CMD=(
 # Pass cardiac tools flag for chest condition
 if [ "$CONDITION" = "chest" ]; then
     EVOTEST_CMD+=(--cardiac-tools True)
+fi
+
+# Pass experiment suffix
+if [ -n "$EXPERIMENT" ]; then
+    EVOTEST_CMD+=(--experiment "$EXPERIMENT")
 fi
 
 if [ "$RESUME" = true ]; then

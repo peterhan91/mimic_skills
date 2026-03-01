@@ -26,16 +26,18 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
-# Parse flags (--resume, --agent, --no-patient-sim, --tot-*)
+# Parse flags (--resume, --agent, --no-patient-sim, --experiment, --tot-*)
 RESUME_FLAG=()
 AGENT_FLAG=()
 PATSIM_FLAG=()
 PARALLEL_FLAG=()
 CONDITION_FLAG=()
+EXPERIMENT_FLAG=()
 TOT_FLAGS=()
 AGENT="ZeroShot"
 PATIENT_SIMULATOR="True"
 CONDITION="abdominal"
+EXPERIMENT=""
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
         --resume)
@@ -51,6 +53,9 @@ while [[ "${1:-}" == --* ]]; do
         --condition)
             CONDITION="${2:?--condition requires a value (abdominal or chest)}"
             CONDITION_FLAG=(--condition "$CONDITION"); shift 2 ;;
+        --experiment)
+            EXPERIMENT="${2:?--experiment requires a suffix (e.g. mt1024)}"
+            EXPERIMENT_FLAG=(--experiment "$EXPERIMENT"); shift 2 ;;
         --tot-max-depth|--tot-breadth|--tot-n-generate|--tot-temperature)
             TOT_FLAGS+=("$1" "${2:?$1 requires a value}"); shift 2 ;;
         *)
@@ -62,19 +67,23 @@ done
 COND_SUFFIX=""
 [ "$CONDITION" = "chest" ] && COND_SUFFIX="_chest"
 
+# Experiment suffix (e.g. _mt1024, _mt2048)
+EXP_SUFFIX=""
+[ -n "$EXPERIMENT" ] && EXP_SUFFIX="_${EXPERIMENT}"
+
 # Agent × patient-sim → 2×2 matrix of parallel experiment dirs
 if [ "$AGENT" = "ToT" ] && [ "$PATIENT_SIMULATOR" = "True" ]; then
-    STATE_FILE="$PROJECT_DIR/evotest_state_tot_patsim${COND_SUFFIX}/state.json"
-    SKILLS_SUBDIR="skills/evo_tot_patsim${COND_SUFFIX}"
+    STATE_FILE="$PROJECT_DIR/evotest_state_tot_patsim${COND_SUFFIX}${EXP_SUFFIX}/state.json"
+    SKILLS_SUBDIR="skills/evo_tot_patsim${COND_SUFFIX}${EXP_SUFFIX}"
 elif [ "$AGENT" = "ToT" ]; then
-    STATE_FILE="$PROJECT_DIR/evotest_state_tot${COND_SUFFIX}/state.json"
-    SKILLS_SUBDIR="skills/evo_tot${COND_SUFFIX}"
+    STATE_FILE="$PROJECT_DIR/evotest_state_tot${COND_SUFFIX}${EXP_SUFFIX}/state.json"
+    SKILLS_SUBDIR="skills/evo_tot${COND_SUFFIX}${EXP_SUFFIX}"
 elif [ "$PATIENT_SIMULATOR" = "True" ]; then
-    STATE_FILE="$PROJECT_DIR/evotest_state_patsim${COND_SUFFIX}/state.json"
-    SKILLS_SUBDIR="skills/evo_patsim${COND_SUFFIX}"
+    STATE_FILE="$PROJECT_DIR/evotest_state_patsim${COND_SUFFIX}${EXP_SUFFIX}/state.json"
+    SKILLS_SUBDIR="skills/evo_patsim${COND_SUFFIX}${EXP_SUFFIX}"
 else
-    STATE_FILE="$PROJECT_DIR/evotest_state${COND_SUFFIX}/state.json"
-    SKILLS_SUBDIR="skills/evo${COND_SUFFIX}"
+    STATE_FILE="$PROJECT_DIR/evotest_state${COND_SUFFIX}${EXP_SUFFIX}/state.json"
+    SKILLS_SUBDIR="skills/evo${COND_SUFFIX}${EXP_SUFFIX}"
 fi
 
 EPISODES="${1:-10}"
@@ -106,6 +115,7 @@ bash "$PROJECT_DIR/scripts/evotest_train.sh" \
     "${PATSIM_FLAG[@]+"${PATSIM_FLAG[@]}"}" \
     "${PARALLEL_FLAG[@]+"${PARALLEL_FLAG[@]}"}" \
     "${CONDITION_FLAG[@]+"${CONDITION_FLAG[@]}"}" \
+    "${EXPERIMENT_FLAG[@]+"${EXPERIMENT_FLAG[@]}"}" \
     "${TOT_FLAGS[@]+"${TOT_FLAGS[@]}"}" \
     "$EPISODES" "$MODEL" "$EVOLVER_MODEL" "$ANNOTATE_CLINICAL"
 
@@ -153,6 +163,7 @@ bash "$PROJECT_DIR/scripts/evotest_test.sh" \
     "${PATSIM_FLAG[@]+"${PATSIM_FLAG[@]}"}" \
     "${PARALLEL_FLAG[@]+"${PARALLEL_FLAG[@]}"}" \
     "${CONDITION_FLAG[@]+"${CONDITION_FLAG[@]}"}" \
+    "${EXPERIMENT_FLAG[@]+"${EXPERIMENT_FLAG[@]}"}" \
     "${TOT_FLAGS[@]+"${TOT_FLAGS[@]}"}" \
     "$BEST_SKILL" "$MODEL" "$ANNOTATE_CLINICAL"
 

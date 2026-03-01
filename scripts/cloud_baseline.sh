@@ -20,6 +20,7 @@ set -euo pipefail
 #   --parallel               Run models in parallel (one model at a time per pathology)
 #   --conda-env ENV          Run python via conda run -n ENV (default: mimic_cdm)
 #   --debug                  Debug mode: only 10 cases per pathology (uses train.pkl)
+#   --results-dir DIR        Save results to DIR instead of results/ (created if needed)
 #   --dry-run                Print commands without executing
 #
 # Examples:
@@ -51,6 +52,7 @@ CONDA_ENV="mimic_cdm"
 PARALLEL=false
 DEBUG=false
 DRY_RUN=false
+CUSTOM_RESULTS_DIR=""
 SELECTED_PATHOLOGIES=()
 MODELS=()
 
@@ -81,6 +83,9 @@ while [[ "${1:-}" == --* ]]; do
             CONDITION="${2:?--condition requires a value (abdominal or chest)}"; shift 2 ;;
         --conda-env)
             CONDA_ENV="${2:?--conda-env requires an env name}"; shift 2 ;;
+        --results-dir)
+            CUSTOM_RESULTS_DIR="${2:?--results-dir requires a path}"
+            shift 2 ;;
         --debug)
             DEBUG=true; shift ;;
         --dry-run)
@@ -104,8 +109,17 @@ fi
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 FRAMEWORK_DIR="$PROJECT_DIR/codes_Hager/MIMIC-Clinical-Decision-Making-Framework"
 DATA_DIR="$PROJECT_DIR/data_splits"
-RESULTS_DIR="$PROJECT_DIR/results"
-TRAJ_DIR="$PROJECT_DIR/trajectories"
+if [ -n "$CUSTOM_RESULTS_DIR" ]; then
+    # Resolve relative paths from project dir
+    if [[ ! "$CUSTOM_RESULTS_DIR" = /* ]]; then
+        CUSTOM_RESULTS_DIR="$PROJECT_DIR/$CUSTOM_RESULTS_DIR"
+    fi
+    RESULTS_DIR="$CUSTOM_RESULTS_DIR"
+    TRAJ_DIR="$CUSTOM_RESULTS_DIR/trajectories"
+else
+    RESULTS_DIR="$PROJECT_DIR/results"
+    TRAJ_DIR="$PROJECT_DIR/trajectories"
+fi
 LOG_DIR="$PROJECT_DIR/logs"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
@@ -129,7 +143,13 @@ fi
 die() { echo "ERROR: $1" >&2; exit 1; }
 
 # Python wrapper: use conda env
-PY() { conda run -n "$CONDA_ENV" python "$@"; }
+PY() {
+    if command -v micromamba &>/dev/null; then
+        micromamba run -n "$CONDA_ENV" python "$@"
+    else
+        conda run -n "$CONDA_ENV" python "$@"
+    fi
+}
 
 count_patients() {
     PY -c "import pickle; d=pickle.load(open('$1','rb')); print(len(d))"
@@ -266,8 +286,10 @@ run_model_pathology() {
     local N=$(count_patients "$DATA_FILE")
     local DESCR="_cloud_baseline${DATA_SUFFIX}${PATSIM_SUFFIX}${SKILL_SUFFIX}${ANNOT_SUFFIX}"
 
+    local RUNNER="conda"
+    command -v micromamba &>/dev/null && RUNNER="micromamba"
     local CMD=(
-        conda run -n "$CONDA_ENV" python run.py
+        $RUNNER run -n "$CONDA_ENV" python run.py
         pathology="$P"
         model="$MODEL"
         agent=ZeroShot
@@ -350,7 +372,13 @@ if [ "$DRY_RUN" = false ]; then
     for MODEL in "${MODELS[@]}"; do
         for P in "${PATHOLOGIES[@]}"; do
             EVAL_DATA=$(get_data_file "$P")
-            RUN_DIR=$(ls -td "$RESULTS_DIR"/*"${P}"*"${DESCR}"* 2>/dev/null | grep -i "${MODEL}" | head -1 || true)
+            # Match by friendly name (e.g. ClaudeSonnet) OR model_name (e.g. claude-sonnet-4-6)
+            RUN_DIR=$(ls -td "$RESULTS_DIR"/*"${P}"*"${DESCR}"* 2>/dev/null | grep -iE "${MODEL}|${MODEL/Claude/claude-}|${MODEL/GPT/gpt}" | head -1 || true)
+            if [ -z "$RUN_DIR" ]; then
+                # Fallback: look for model_name from Hydra config (replace CamelCase with hyphenated lowercase)
+                MODEL_LC=$(echo "$MODEL" | sed -E 's/([A-Z])/-\L\1/g; s/^-//')
+                RUN_DIR=$(ls -td "$RESULTS_DIR"/*"${P}"*"${DESCR}"* 2>/dev/null | grep -i "${MODEL_LC}" | head -1 || true)
+            fi
             if [ -z "$RUN_DIR" ]; then
                 RUN_DIR=$(ls -td "$RESULTS_DIR"/*"${P}"*"${MODEL}"*"${DESCR}"* 2>/dev/null | head -1)
             fi

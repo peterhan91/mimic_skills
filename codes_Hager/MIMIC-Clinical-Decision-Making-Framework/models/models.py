@@ -41,6 +41,9 @@ from utils.nlp import extract_sections
 #   2) Thinking tokens accumulate in the agent scratchpad, wasting context
 _RE_THINK_BLOCK = re.compile(r"<think>[\s\S]*?</think>", re.DOTALL)
 
+# Configurable max_tokens for vLLM (override via VLLM_MAX_TOKENS env var)
+VLLM_MAX_TOKENS = int(os.environ.get("VLLM_MAX_TOKENS", "4096"))
+
 def _strip_think_blocks(text: str) -> str:
     """Remove <think>...</think> reasoning blocks from model output."""
     return _RE_THINK_BLOCK.sub("", text).strip()
@@ -431,7 +434,7 @@ class CustomLLM(LLM):
                 json={
                     "model": self.model_name,
                     "prompt": prompt,
-                    "max_tokens": 4096,
+                    "max_tokens": VLLM_MAX_TOKENS,
                     "temperature": 0.0,
                     "stop": STOP_WORDS + stop,
                     "seed": self.seed,
@@ -606,7 +609,7 @@ class CustomLLM(LLM):
                 json={
                     "model": self.model_name,
                     "prompt": prompt,
-                    "max_tokens": 4096,
+                    "max_tokens": VLLM_MAX_TOKENS,
                     "temperature": temperature,
                     "stop": STOP_WORDS + stop,
                     "seed": None if temperature > 0 else self.seed,
@@ -767,7 +770,7 @@ class CustomLLM(LLM):
                 json={
                     "model": self.model_name,
                     "prompt": prompt,
-                    "max_tokens": 4096,
+                    "max_tokens": VLLM_MAX_TOKENS,
                     "temperature": temperature,
                     "stop": STOP_WORDS + stop,
                     "seed": None if temperature > 0 else self.seed,

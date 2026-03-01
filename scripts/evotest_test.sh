@@ -38,6 +38,7 @@ AGENT="ZeroShot"
 PATIENT_SIMULATOR="True"
 PARALLEL_PATHOLOGIES=false
 CONDITION="abdominal"
+EXPERIMENT=""
 TOT_ARGS=()
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
@@ -49,6 +50,8 @@ while [[ "${1:-}" == --* ]]; do
             PARALLEL_PATHOLOGIES=true; shift ;;
         --condition)
             CONDITION="${2:?--condition requires a value (abdominal or chest)}"; shift 2 ;;
+        --experiment)
+            EXPERIMENT="${2:?--experiment requires a suffix (e.g. mt1024)}"; shift 2 ;;
         --tot-max-depth|--tot-breadth|--tot-n-generate|--tot-temperature)
             # Convert --tot-max-depth → tot_max_depth= for Hydra
             KEY=$(echo "${1#--}" | tr '-' '_')
@@ -87,15 +90,19 @@ else
     CARDIAC_TOOLS_FLAG=""
 fi
 
+# Experiment suffix (e.g. _mt1024, _mt2048)
+EXP_SUFFIX=""
+[ -n "$EXPERIMENT" ] && EXP_SUFFIX="_${EXPERIMENT}"
+
 # Experiment prefix for trajectories/comparisons (prevents cross-experiment overwrites)
 if [ "$AGENT" = "ToT" ] && [ "$PATIENT_SIMULATOR" = "True" ]; then
-    TEST_PREFIX="totps"
+    TEST_PREFIX="totps${EXP_SUFFIX}"
 elif [ "$AGENT" = "ToT" ]; then
-    TEST_PREFIX="tot"
+    TEST_PREFIX="tot${EXP_SUFFIX}"
 elif [ "$PATIENT_SIMULATOR" = "True" ]; then
-    TEST_PREFIX="evops"
+    TEST_PREFIX="evops${EXP_SUFFIX}"
 else
-    TEST_PREFIX="evo"
+    TEST_PREFIX="evo${EXP_SUFFIX}"
 fi
 
 # ============================================================

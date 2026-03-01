@@ -269,27 +269,30 @@ class ClinicalEvoTest:
         # Condition suffix for experiment dirs
         cond_suffix = "_chest" if self.condition == "chest" else ""
 
+        # Experiment suffix (e.g. _mt1024, _mt2048) for isolated runs
+        exp_suffix = f"_{args.experiment}" if getattr(args, "experiment", "") else ""
+
         # Agent type + patient sim → 2×2 matrix of parallel experiment dirs
         self.agent_type = getattr(args, "agent", "ZeroShot")
         is_tot = self.agent_type == "ToT"
         is_patsim = getattr(args, "patient_simulator", "False").lower() == "true"
 
         if is_tot and is_patsim:
-            self.state_dir = PROJECT_DIR / f"evotest_state_tot_patsim{cond_suffix}"
-            self.skills_dir = PROJECT_DIR / "skills" / f"evo_tot_patsim{cond_suffix}"
-            self._run_prefix = "totps"
+            self.state_dir = PROJECT_DIR / f"evotest_state_tot_patsim{cond_suffix}{exp_suffix}"
+            self.skills_dir = PROJECT_DIR / "skills" / f"evo_tot_patsim{cond_suffix}{exp_suffix}"
+            self._run_prefix = f"totps{exp_suffix}"
         elif is_tot:
-            self.state_dir = PROJECT_DIR / f"evotest_state_tot{cond_suffix}"
-            self.skills_dir = PROJECT_DIR / "skills" / f"evo_tot{cond_suffix}"
-            self._run_prefix = "tot"
+            self.state_dir = PROJECT_DIR / f"evotest_state_tot{cond_suffix}{exp_suffix}"
+            self.skills_dir = PROJECT_DIR / "skills" / f"evo_tot{cond_suffix}{exp_suffix}"
+            self._run_prefix = f"tot{exp_suffix}"
         elif is_patsim:
-            self.state_dir = PROJECT_DIR / f"evotest_state_patsim{cond_suffix}"
-            self.skills_dir = PROJECT_DIR / "skills" / f"evo_patsim{cond_suffix}"
-            self._run_prefix = "evops"
+            self.state_dir = PROJECT_DIR / f"evotest_state_patsim{cond_suffix}{exp_suffix}"
+            self.skills_dir = PROJECT_DIR / "skills" / f"evo_patsim{cond_suffix}{exp_suffix}"
+            self._run_prefix = f"evops{exp_suffix}"
         else:
-            self.state_dir = PROJECT_DIR / f"evotest_state{cond_suffix}"
-            self.skills_dir = PROJECT_DIR / "skills" / f"evo{cond_suffix}"
-            self._run_prefix = "evo"
+            self.state_dir = PROJECT_DIR / f"evotest_state{cond_suffix}{exp_suffix}"
+            self.skills_dir = PROJECT_DIR / "skills" / f"evo{cond_suffix}{exp_suffix}"
+            self._run_prefix = f"evo{exp_suffix}"
         self.state_file = self.state_dir / "state.json"
         self.episode_log = self.state_dir / "episode_log.jsonl"
 
@@ -1298,6 +1301,10 @@ def main():
         "--parallel-pathologies", action="store_true",
         help="Run pathologies in parallel within each episode (each pathology "
              "is a separate subprocess, safe for Strategy B)"
+    )
+    parser.add_argument(
+        "--experiment", type=str, default="",
+        help="Experiment suffix for isolated runs (e.g. mt1024, mt2048)"
     )
     parser.add_argument(
         "--dry-run", action="store_true",

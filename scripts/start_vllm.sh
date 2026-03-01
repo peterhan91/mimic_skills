@@ -84,10 +84,10 @@ if $USE_QWEN35 || $USE_QWEN35_27B; then
         --language-model-only"
 fi
 
-# MTP speculative decoding (Qwen3-Next and Qwen3.5-27B)
-if $USE_QWEN3NEXT || $USE_QWEN35_27B; then
+# MTP speculative decoding (Qwen3-Next only; Qwen3.5-27B OOMs with MTP on single 95GB GPU)
+if $USE_QWEN3NEXT; then
     VLLM_EXTRA_ARGS="$VLLM_EXTRA_ARGS \
-        --speculative-config '{\"method\":\"qwen3_next_mtp\",\"num_speculative_tokens\":2}'"
+        --speculative-config {\"method\":\"qwen3_next_mtp\",\"num_speculative_tokens\":2}"
 fi
 
 # GH200 performance tuning
