@@ -1,4 +1,5 @@
 import os
+import re
 from os.path import join
 from typing import Any, List, Mapping, Dict
 
@@ -28,6 +29,21 @@ except ImportError:
 from models.utils import create_stop_criteria, create_stop_criteria_exllama
 from agents.agent import STOP_WORDS
 from utils.nlp import extract_sections
+
+
+# ── Qwen3.5 thinking block removal ──────────────────────────────────
+# Qwen3.5 models generate <think>...</think> reasoning blocks by default.
+# When using /v1/completions (not /v1/chat/completions), vLLM's
+# --reasoning-parser has no effect and the raw <think> content appears
+# in the output text.  This causes two problems:
+#   1) The regex parser finds Action:/diagnosis: inside <think> blocks,
+#      triggering false parses (e.g., thinking text parsed as lab names)
+#   2) Thinking tokens accumulate in the agent scratchpad, wasting context
+_RE_THINK_BLOCK = re.compile(r"<think>[\s\S]*?</think>", re.DOTALL)
+
+def _strip_think_blocks(text: str) -> str:
+    """Remove <think>...</think> reasoning blocks from model output."""
+    return _RE_THINK_BLOCK.sub("", text).strip()
 
 
 class CustomLLM(LLM):
@@ -415,7 +431,7 @@ class CustomLLM(LLM):
                 json={
                     "model": self.model_name,
                     "prompt": prompt,
-                    "max_tokens": 1024,
+                    "max_tokens": 4096,
                     "temperature": 0.0,
                     "stop": STOP_WORDS + stop,
                     "seed": self.seed,
@@ -423,7 +439,7 @@ class CustomLLM(LLM):
                 timeout=120,
             )
             resp.raise_for_status()
-            output = resp.json()["choices"][0]["text"]
+            output = _strip_think_blocks(resp.json()["choices"][0]["text"])
 
         elif self.openai_api_key:
             messages = extract_sections(
@@ -590,7 +606,7 @@ class CustomLLM(LLM):
                 json={
                     "model": self.model_name,
                     "prompt": prompt,
-                    "max_tokens": 1024,
+                    "max_tokens": 4096,
                     "temperature": temperature,
                     "stop": STOP_WORDS + stop,
                     "seed": None if temperature > 0 else self.seed,
@@ -598,7 +614,7 @@ class CustomLLM(LLM):
                 timeout=120,
             )
             resp.raise_for_status()
-            output = resp.json()["choices"][0]["text"]
+            output = _strip_think_blocks(resp.json()["choices"][0]["text"])
 
         elif self.openai_api_key:
             messages = extract_sections(prompt, self.tags)
@@ -751,7 +767,7 @@ class CustomLLM(LLM):
                 json={
                     "model": self.model_name,
                     "prompt": prompt,
-                    "max_tokens": 1024,
+                    "max_tokens": 4096,
                     "temperature": temperature,
                     "stop": STOP_WORDS + stop,
                     "seed": None if temperature > 0 else self.seed,
@@ -763,7 +779,7 @@ class CustomLLM(LLM):
             choices = resp.json()["choices"]
             outputs = []
             for choice in sorted(choices, key=lambda c: c["index"]):
-                text = choice["text"]
+                text = _strip_think_blocks(choice["text"])
                 for stop_word in STOP_WORDS + stop:
                     text = text.replace(stop_word, "")
                 outputs.append(text.strip())
