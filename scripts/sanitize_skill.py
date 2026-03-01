@@ -77,6 +77,34 @@ DISEASE_TERMS = sorted(
         # Pyelonephritis
         "acute pyelonephritis",
         "pyelonephritis",
+        # Myocardial infarction
+        "acute myocardial infarction",
+        "myocardial infarction",
+        "acute coronary syndrome",
+        "heart attack",
+        "STEMI",
+        "NSTEMI",
+        # Congestive heart failure
+        "congestive heart failure",
+        "heart failure",
+        "CHF",
+        # Pulmonary embolism
+        "pulmonary embolism",
+        "pulmonary embolus",
+        # Aortic stenosis
+        "aortic stenosis",
+        "aortic valve disease",
+        # Mitral regurgitation
+        "mitral regurgitation",
+        "mitral valve prolapse",
+        "MVP",
+        # Cardiac procedures
+        "percutaneous coronary intervention",
+        "PCI",
+        "coronary artery bypass",
+        "CABG",
+        "valve replacement",
+        "valvuloplasty",
     ],
     key=len,
     reverse=True,

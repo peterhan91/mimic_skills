@@ -765,3 +765,239 @@ URETERAL_PROCEDURES_KEYWORDS = [
 ALTERNATE_URETERAL_KEYWORDS = [
     {"location": "ureter", "modifiers": ["stent", "catheter", "drain"]},
 ]
+
+
+### PCI (for myocardial infarction) ###
+
+PCI_PROCEDURES_ICD9 = [
+    3604,  # Intracoronary artery thrombolytic infusion
+    3606,  # Insertion of non-drug-eluting coronary artery stent(s)
+    3607,  # Insertion of drug-eluting coronary artery stent(s)
+    3601,  # Open chest coronary artery angioplasty
+    3602,  # Percutaneous transluminal coronary angioplasty (PTCA)
+    3609,  # Other removal of coronary artery obstruction
+    8856,  # Coronary arteriography using two catheters
+    8857,  # Other and unspecified coronary arteriography
+]
+
+PCI_PROCEDURES_ICD9_TITLES = [
+    "Intracoronary artery thrombolytic infusion",
+    "Insertion of non-drug-eluting coronary artery stent(s)",
+    "Insertion of drug-eluting coronary artery stent(s)",
+    "Open chest coronary artery angioplasty",
+    "Percutaneous transluminal coronary angioplasty (PTCA)",
+    "Other removal of coronary artery obstruction",
+    "Coronary arteriography using two catheters",
+    "Other and unspecified coronary arteriography",
+]
+
+PCI_PROCEDURES_ICD10 = [
+    "02703DZ",  # Dilation of Coronary Artery, One Artery with Intraluminal Device, Percutaneous Approach
+    "02703ZZ",  # Dilation of Coronary Artery, One Artery, Percutaneous Approach
+    "02713DZ",  # Dilation of Coronary Artery, Two Arteries with Intraluminal Device, Percutaneous Approach
+]
+
+PCI_PROCEDURES_ICD10_TITLES = [
+    "Dilation of Coronary Artery, One Artery with Intraluminal Device, Percutaneous Approach",
+    "Dilation of Coronary Artery, One Artery, Percutaneous Approach",
+    "Dilation of Coronary Artery, Two Arteries with Intraluminal Device, Percutaneous Approach",
+]
+
+PCI_PROCEDURES_KEYWORDS = [
+    "percutaneous coronary intervention",
+    "pci",
+    "angioplasty",
+    "coronary stent",
+    "drug-eluting stent",
+    "balloon angioplasty",
+    "ptca",
+    "coronary catheterization",
+]
+
+ALTERNATE_PCI_KEYWORDS = [
+    {"location": "coronary", "modifiers": ["stent", "intervention", "angioplasty"]},
+]
+
+
+### CABG (for myocardial infarction) ###
+
+CABG_PROCEDURES_ICD9 = [
+    3610,  # Aortocoronary bypass for heart revascularization, not otherwise specified
+    3611,  # (Aorto)coronary bypass of one coronary artery
+    3612,  # (Aorto)coronary bypass of two coronary arteries
+    3613,  # (Aorto)coronary bypass of three coronary arteries
+    3614,  # (Aorto)coronary bypass of four or more coronary arteries
+    3615,  # Single internal mammary-coronary artery bypass
+    3616,  # Double internal mammary-coronary artery bypass
+    3619,  # Other bypass anastomosis for heart revascularization
+]
+
+CABG_PROCEDURES_ICD9_TITLES = [
+    "Aortocoronary bypass for heart revascularization, NOS",
+    "(Aorto)coronary bypass of one coronary artery",
+    "(Aorto)coronary bypass of two coronary arteries",
+    "(Aorto)coronary bypass of three coronary arteries",
+    "(Aorto)coronary bypass of four or more coronary arteries",
+    "Single internal mammary-coronary artery bypass",
+    "Double internal mammary-coronary artery bypass",
+    "Other bypass anastomosis for heart revascularization",
+]
+
+CABG_PROCEDURES_ICD10 = [
+    "021009W",  # Bypass Coronary Artery, One Artery from Aorta with Autologous Venous Tissue, Open Approach
+    "0210093",  # Bypass Coronary Artery, One Artery from Coronary Artery with Autologous Venous Tissue, Open Approach
+]
+
+CABG_PROCEDURES_ICD10_TITLES = [
+    "Bypass Coronary Artery, One Artery from Aorta with Autologous Venous Tissue, Open Approach",
+    "Bypass Coronary Artery, One Artery from Coronary Artery with Autologous Venous Tissue, Open Approach",
+]
+
+CABG_PROCEDURES_KEYWORDS = [
+    "coronary artery bypass",
+    "cabg",
+    "bypass graft",
+    "coronary bypass",
+]
+
+ALTERNATE_CABG_KEYWORDS = [
+    {"location": "coronary", "modifiers": ["bypass", "graft", "revascularization"]},
+]
+
+
+### VALVE REPLACEMENT — combined (legacy, used if valve-specific lists not needed) ###
+
+VALVE_REPLACEMENT_PROCEDURES_ICD9 = [
+    3521,  # Replacement of aortic valve with tissue graft
+    3522,  # Other replacement of aortic valve
+    3523,  # Replacement of mitral valve with tissue graft
+    3524,  # Other replacement of mitral valve
+    3525,  # Replacement of pulmonary valve with tissue graft
+    3526,  # Other replacement of pulmonary valve
+    3527,  # Replacement of tricuspid valve with tissue graft
+    3528,  # Other replacement of tricuspid valve
+    3510,  # Open heart valvuloplasty without replacement, NOS
+    3511,  # Open heart valvuloplasty of aortic valve without replacement
+    3512,  # Open heart valvuloplasty of mitral valve without replacement
+    3596,  # Percutaneous balloon valvuloplasty
+    3505,  # Endovascular replacement of aortic valve
+    3506,  # Transapical replacement of aortic valve
+]
+
+VALVE_REPLACEMENT_PROCEDURES_ICD9_TITLES = [
+    "Replacement of aortic valve with tissue graft",
+    "Other replacement of aortic valve",
+    "Replacement of mitral valve with tissue graft",
+    "Other replacement of mitral valve",
+    "Replacement of pulmonary valve with tissue graft",
+    "Other replacement of pulmonary valve",
+    "Replacement of tricuspid valve with tissue graft",
+    "Other replacement of tricuspid valve",
+    "Open heart valvuloplasty without replacement, NOS",
+    "Open heart valvuloplasty of aortic valve without replacement",
+    "Open heart valvuloplasty of mitral valve without replacement",
+    "Percutaneous balloon valvuloplasty",
+    "Endovascular replacement of aortic valve",
+    "Transapical replacement of aortic valve",
+]
+
+VALVE_REPLACEMENT_PROCEDURES_ICD10 = [
+    "02RF0JZ",  # Replacement of Aortic Valve with Synthetic Substitute, Open Approach
+    "02RF07Z",  # Replacement of Aortic Valve with Autologous Tissue Substitute, Open Approach
+    "02RG0JZ",  # Replacement of Mitral Valve with Synthetic Substitute, Open Approach
+    "02RG07Z",  # Replacement of Mitral Valve with Autologous Tissue Substitute, Open Approach
+    "02RF3JZ",  # Replacement of Aortic Valve with Synthetic Substitute, Percutaneous Approach (TAVR)
+]
+
+VALVE_REPLACEMENT_PROCEDURES_ICD10_TITLES = [
+    "Replacement of Aortic Valve with Synthetic Substitute, Open Approach",
+    "Replacement of Aortic Valve with Autologous Tissue Substitute, Open Approach",
+    "Replacement of Mitral Valve with Synthetic Substitute, Open Approach",
+    "Replacement of Mitral Valve with Autologous Tissue Substitute, Open Approach",
+    "Replacement of Aortic Valve with Synthetic Substitute, Percutaneous Approach (TAVR)",
+]
+
+VALVE_REPLACEMENT_PROCEDURES_KEYWORDS = [
+    "valve replacement",
+    "valve repair",
+    "valvuloplasty",
+    "tavr",
+    "tavi",
+    "savr",
+    "transcatheter aortic valve",
+    "mitral valve repair",
+    "aortic valve replacement",
+    "mitral valve replacement",
+    "mitraclip",
+]
+
+ALTERNATE_VALVE_REPLACEMENT_KEYWORDS = [
+    {"location": "valve", "modifiers": ["replacement", "repair", "surgery", "surgical"]},
+    {"location": "aortic", "modifiers": ["replacement", "repair", "valve surgery"]},
+    {"location": "mitral", "modifiers": ["replacement", "repair", "valve surgery"]},
+]
+
+
+### AORTIC VALVE PROCEDURES (for aortic stenosis — valve-specific) ###
+
+AORTIC_VALVE_PROCEDURES_ICD9 = [
+    3521,  # Replacement of aortic valve with tissue graft
+    3522,  # Other replacement of aortic valve
+    3510,  # Open heart valvuloplasty without replacement, NOS
+    3511,  # Open heart valvuloplasty of aortic valve without replacement
+    3596,  # Percutaneous balloon valvuloplasty
+    3505,  # Endovascular replacement of aortic valve
+    3506,  # Transapical replacement of aortic valve
+]
+
+AORTIC_VALVE_PROCEDURES_ICD10 = [
+    "02RF0JZ",  # Replacement of Aortic Valve with Synthetic Substitute, Open Approach
+    "02RF07Z",  # Replacement of Aortic Valve with Autologous Tissue Substitute, Open Approach
+    "02RF3JZ",  # Replacement of Aortic Valve with Synthetic Substitute, Percutaneous Approach (TAVR)
+]
+
+AORTIC_VALVE_PROCEDURES_KEYWORDS = [
+    "aortic valve replacement",
+    "tavr",
+    "tavi",
+    "savr",
+    "transcatheter aortic valve",
+    "valvuloplasty",
+    "valve replacement",
+    "valve repair",
+]
+
+ALTERNATE_AORTIC_VALVE_KEYWORDS = [
+    {"location": "aortic", "modifiers": ["replacement", "repair", "valve surgery", "valvuloplasty"]},
+    {"location": "valve", "modifiers": ["replacement", "repair", "surgery", "surgical"]},
+]
+
+
+### MITRAL VALVE PROCEDURES (for mitral regurgitation — valve-specific) ###
+
+MITRAL_VALVE_PROCEDURES_ICD9 = [
+    3523,  # Replacement of mitral valve with tissue graft
+    3524,  # Other replacement of mitral valve
+    3510,  # Open heart valvuloplasty without replacement, NOS
+    3512,  # Open heart valvuloplasty of mitral valve without replacement
+    3596,  # Percutaneous balloon valvuloplasty
+]
+
+MITRAL_VALVE_PROCEDURES_ICD10 = [
+    "02RG0JZ",  # Replacement of Mitral Valve with Synthetic Substitute, Open Approach
+    "02RG07Z",  # Replacement of Mitral Valve with Autologous Tissue Substitute, Open Approach
+]
+
+MITRAL_VALVE_PROCEDURES_KEYWORDS = [
+    "mitral valve replacement",
+    "mitral valve repair",
+    "mitraclip",
+    "valvuloplasty",
+    "valve replacement",
+    "valve repair",
+]
+
+ALTERNATE_MITRAL_VALVE_KEYWORDS = [
+    {"location": "mitral", "modifiers": ["replacement", "repair", "valve surgery", "clip"]},
+    {"location": "valve", "modifiers": ["replacement", "repair", "surgery", "surgical"]},
+]

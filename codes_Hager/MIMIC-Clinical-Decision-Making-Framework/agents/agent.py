@@ -20,6 +20,8 @@ from agents.prompts import (
     DIAG_CRIT_TOOL_USE_EXAMPLE,
     ASK_PATIENT_TOOL_DESCR,
     ASK_PATIENT_TOOL_USE_EXAMPLE,
+    ECG_TOOL_DESCR,
+    ECHO_TOOL_DESCR,
 )
 from agents.DiagnosisWorkflowParser import DiagnosisWorkflowParser
 from tools.Tools import (
@@ -27,6 +29,8 @@ from tools.Tools import (
     RunImaging,
     DoPhysicalExamination,
     ReadDiagnosticCriteria,
+    DoECG,
+    DoEchocardiogram,
 )
 from tools.utils import action_input_pretty_printer
 from utils.nlp import calculate_num_tokens, truncate_text
@@ -255,6 +259,7 @@ def build_agent_executor_ZeroShot(
     skill_inject="examples",
     annotate_clinical=False,
     patient_simulator=None,
+    cardiac_tools=False,
 ):
     with open(lab_test_mapping_path, "rb") as f:
         lab_test_mapping_df = pickle.load(f)
@@ -279,6 +284,12 @@ def build_agent_executor_ZeroShot(
         tools.append(ReadDiagnosticCriteria())
         add_tool_descr += DIAG_CRIT_TOOL_DESCR
         add_tool_use_examples += DIAG_CRIT_TOOL_USE_EXAMPLE
+
+    if cardiac_tools:
+        tools.append(DoECG(action_results=patient))
+        tools.append(DoEchocardiogram(action_results=patient))
+        add_tool_descr += ECG_TOOL_DESCR
+        add_tool_descr += ECHO_TOOL_DESCR
 
     if patient_simulator:
         from tools.patient_simulator import AskPatient

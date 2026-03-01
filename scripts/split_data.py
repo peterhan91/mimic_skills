@@ -1,5 +1,5 @@
 """
-Split MIMIC-CDM-IV pkl files into train + test + remaining for EvoTest experiments.
+Split MIMIC-CDM pkl files into train + test + remaining for EvoTest experiments.
 
 **Patient-level split**: Groups admissions by subject_id so that all admissions
 for the same patient land in the same split. This prevents data leakage where
@@ -9,16 +9,25 @@ Train set (~10 patients): Used during EvoTest evolution episodes.
 Test set (~100 patients): Held-out evaluation. Never seen during evolution.
 Remaining: Reserved for Option C synthesis or future evolution batches.
 
+Supports two conditions:
+  - abdominal (default): 7 pathologies from CDM-IV
+  - chest: 5 cardiac pathologies from CDM-III (4) + CDM-IV (PE)
+
+Note: CDM-III hadm_ids are NOT in MIMIC-IV admissions.csv — we use MIMIC-III
+ADMISSIONS.csv for those pathologies.
+
 Note: Because we split by patient (not admission), the exact number of admissions
 per split may differ slightly from n_train/n_test when patients have multiple
 admissions. The script targets n_train patients and n_test patients.
 
 Usage:
     python scripts/split_data.py
+    python scripts/split_data.py --condition chest
     python scripts/split_data.py --seed 42 --n_train 10 --n_test 100
 """
 
 import argparse
+import os
 import pickle
 import random
 from collections import defaultdict
@@ -27,24 +36,66 @@ from pathlib import Path
 import pandas as pd
 
 
-PATHOLOGIES = [
+ABDOMINAL_PATHOLOGIES = [
     "appendicitis", "cholecystitis", "diverticulitis", "pancreatitis",
     "cholangitis", "bowel_obstruction", "pyelonephritis",
 ]
 
-BASE_MIMIC = Path(__file__).resolve().parent.parent / "MIMIC-CDM-IV"
-OUTPUT_DIR = Path(__file__).resolve().parent.parent / "data_splits"
-ADMISSIONS_CSV = Path("/Users/tianyuhan/Documents/data/mimiciv/3.1/hosp/admissions.csv")
+CHEST_PATHOLOGIES = [
+    "myocardial_infarction", "pulmonary_embolism", "congestive_heart_failure",
+    "aortic_stenosis", "mitral_regurgitation",
+]
+
+# Pathologies from CDM-III (use MIMIC-III admissions for hadm→subject mapping)
+CDM_III_PATHOLOGIES = {
+    "myocardial_infarction", "congestive_heart_failure",
+    "aortic_stenosis", "mitral_regurgitation",
+}
+
+# Small pathologies: reduced test set so we have enough for train
+SMALL_PATHOLOGY_SIZES = {
+    "congestive_heart_failure": {"n_test": 60},
+    "aortic_stenosis": {"n_test": 35},
+    "mitral_regurgitation": {"n_test": 15},
+}
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+BASE_CDM_III = PROJECT_ROOT / "MIMIC-CDM-III"
+BASE_CDM_IV = PROJECT_ROOT / "MIMIC-CDM-IV"
+OUTPUT_DIR = PROJECT_ROOT / "data_splits"
+
+ADMISSIONS_CSV_IV = Path(os.environ.get(
+    "MIMIC_IV_ADMISSIONS_CSV",
+    "/Users/tianyuhan/Documents/data/mimiciv/3.1/hosp/admissions.csv",
+))
+ADMISSIONS_CSV_III = Path(os.environ.get(
+    "MIMIC_III_ADMISSIONS_CSV",
+    "/Users/tianyuhan/Documents/data/physionet.org/files/mimiciii/1.4/ADMISSIONS.csv",
+))
 
 
-def load_hadm_to_subject() -> dict:
+def load_hadm_to_subject_iv() -> dict:
     """Load hadm_id -> subject_id mapping from MIMIC-IV admissions table."""
-    df = pd.read_csv(ADMISSIONS_CSV, usecols=["hadm_id", "subject_id"])
+    df = pd.read_csv(ADMISSIONS_CSV_IV, usecols=["hadm_id", "subject_id"])
     return dict(zip(df["hadm_id"], df["subject_id"]))
 
 
+def load_hadm_to_subject_iii() -> dict:
+    """Load hadm_id -> subject_id mapping from MIMIC-III admissions table."""
+    df = pd.read_csv(ADMISSIONS_CSV_III, usecols=["HADM_ID", "SUBJECT_ID"])
+    return dict(zip(df["HADM_ID"], df["SUBJECT_ID"]))
+
+
+def get_base_dir(pathology: str) -> Path:
+    """Return the correct data directory for a pathology."""
+    if pathology in CDM_III_PATHOLOGIES:
+        return BASE_CDM_III
+    return BASE_CDM_IV
+
+
 def load_pkl(pathology: str) -> dict:
-    path = BASE_MIMIC / f"{pathology}_hadm_info_first_diag.pkl"
+    base = get_base_dir(pathology)
+    path = base / f"{pathology}_hadm_info_first_diag.pkl"
     with open(path, "rb") as f:
         return pickle.load(f)
 
@@ -56,6 +107,10 @@ def split_and_save(
     n_test: int = 100,
     seed: int = 42,
 ) -> None:
+    # Adjust n_test for small pathologies
+    if pathology in SMALL_PATHOLOGY_SIZES:
+        n_test = SMALL_PATHOLOGY_SIZES[pathology]["n_test"]
+
     data = load_pkl(pathology)
     hadm_ids = list(data.keys())
     total = len(hadm_ids)
@@ -143,28 +198,57 @@ def split_and_save(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Split MIMIC-CDM-IV data (patient-level)")
+    parser = argparse.ArgumentParser(description="Split MIMIC-CDM data (patient-level)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--n_train", type=int, default=10)
     parser.add_argument("--n_test", type=int, default=100)
+    parser.add_argument(
+        "--condition",
+        choices=["abdominal", "chest"],
+        default="abdominal",
+        help="Condition domain: abdominal (7 GI pathologies) or chest (5 cardiac pathologies)",
+    )
     args = parser.parse_args()
 
+    if args.condition == "abdominal":
+        pathologies = ABDOMINAL_PATHOLOGIES
+    else:
+        pathologies = CHEST_PATHOLOGIES
+
+    print(f"Condition: {args.condition}")
     print(f"Splitting with seed={args.seed}, n_train={args.n_train} patients, n_test={args.n_test} patients")
-    print(f"Source: {BASE_MIMIC}")
+    print(f"Pathologies: {pathologies}")
     print(f"Output: {OUTPUT_DIR}")
     print()
 
-    print("Loading hadm_id -> subject_id mapping from admissions.csv...")
-    hadm_to_subject = load_hadm_to_subject()
-    print(f"  {len(hadm_to_subject)} admission mappings loaded")
+    # Load hadm→subject mappings
+    # For chest condition, we may need both MIMIC-III and MIMIC-IV mappings
+    hadm_to_subject = {}
+    if args.condition == "chest":
+        # CDM-III pathologies need MIMIC-III admissions
+        needs_iii = any(p in CDM_III_PATHOLOGIES for p in pathologies)
+        needs_iv = any(p not in CDM_III_PATHOLOGIES for p in pathologies)
+        if needs_iii:
+            print(f"Loading MIMIC-III admissions from {ADMISSIONS_CSV_III}...")
+            hadm_to_subject.update(load_hadm_to_subject_iii())
+            print(f"  {len(hadm_to_subject)} MIMIC-III admission mappings loaded")
+        if needs_iv:
+            print(f"Loading MIMIC-IV admissions from {ADMISSIONS_CSV_IV}...")
+            iv_map = load_hadm_to_subject_iv()
+            hadm_to_subject.update(iv_map)
+            print(f"  {len(iv_map)} MIMIC-IV admission mappings loaded")
+    else:
+        print(f"Loading hadm_id -> subject_id mapping from {ADMISSIONS_CSV_IV}...")
+        hadm_to_subject = load_hadm_to_subject_iv()
+        print(f"  {len(hadm_to_subject)} admission mappings loaded")
     print()
 
-    for pathology in PATHOLOGIES:
+    for pathology in pathologies:
         split_and_save(pathology, hadm_to_subject, args.n_train, args.n_test, args.seed)
 
     print("Done. Directory structure:")
     print(f"  {OUTPUT_DIR}/")
-    for p in PATHOLOGIES:
+    for p in pathologies:
         print(f"    {p}/")
         print(f"      train.pkl               (EvoTest evolution batch)")
         print(f"      test.pkl                (held-out evaluation)")

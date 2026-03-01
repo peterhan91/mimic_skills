@@ -37,6 +37,7 @@ set -euo pipefail
 AGENT="ZeroShot"
 PATIENT_SIMULATOR="True"
 PARALLEL_PATHOLOGIES=false
+CONDITION="abdominal"
 TOT_ARGS=()
 while [[ "${1:-}" == --* ]]; do
     case "$1" in
@@ -46,6 +47,8 @@ while [[ "${1:-}" == --* ]]; do
             PATIENT_SIMULATOR="False"; shift ;;
         --parallel-pathologies)
             PARALLEL_PATHOLOGIES=true; shift ;;
+        --condition)
+            CONDITION="${2:?--condition requires a value (abdominal or chest)}"; shift 2 ;;
         --tot-max-depth|--tot-breadth|--tot-n-generate|--tot-temperature)
             # Convert --tot-max-depth → tot_max_depth= for Hydra
             KEY=$(echo "${1#--}" | tr '-' '_')
@@ -73,8 +76,16 @@ LOG_FILE="$LOG_DIR/test_eval_${TIMESTAMP}.log"
 source "$(dirname "$0")/_detect_python.sh"
 
 BASE_MODELS="${HF_HOME:-${HOME}/.cache/huggingface/hub}"
+
+# Pathologies and lab test mapping by condition
 LAB_TEST_MAPPING="$PROJECT_DIR/MIMIC-CDM-IV/lab_test_mapping.pkl"
-PATHOLOGIES=("appendicitis" "cholecystitis" "diverticulitis" "pancreatitis" "cholangitis" "bowel_obstruction" "pyelonephritis")
+if [ "$CONDITION" = "chest" ]; then
+    PATHOLOGIES=("myocardial_infarction" "pulmonary_embolism" "congestive_heart_failure" "aortic_stenosis" "mitral_regurgitation")
+    CARDIAC_TOOLS_FLAG="cardiac_tools=True"
+else
+    PATHOLOGIES=("appendicitis" "cholecystitis" "diverticulitis" "pancreatitis" "cholangitis" "bowel_obstruction" "pyelonephritis")
+    CARDIAC_TOOLS_FLAG=""
+fi
 
 # Experiment prefix for trajectories/comparisons (prevents cross-experiment overwrites)
 if [ "$AGENT" = "ToT" ] && [ "$PATIENT_SIMULATOR" = "True" ]; then
@@ -189,6 +200,7 @@ run_baseline_pathology() {
     if [ "$PATIENT_SIMULATOR" = "True" ]; then
         CMD+=(patient_simulator=True)
     fi
+    [ -n "$CARDIAC_TOOLS_FLAG" ] && CMD+=("$CARDIAC_TOOLS_FLAG")
     "${CMD[@]}"
 }
 
@@ -282,6 +294,7 @@ run_skill_pathology() {
     if [ "$PATIENT_SIMULATOR" = "True" ]; then
         CMD+=(patient_simulator=True)
     fi
+    [ -n "$CARDIAC_TOOLS_FLAG" ] && CMD+=("$CARDIAC_TOOLS_FLAG")
     "${CMD[@]}"
 }
 

@@ -42,6 +42,7 @@ PATIENT_SIMULATOR="True"
 PATSIM_SUFFIX="_patsim"
 PARALLEL_PATHOLOGIES=false
 SMALL_TEST=false
+CONDITION="abdominal"
 DATA_SPLIT="test"
 NUM_PATIENTS=100
 TOT_ARGS=()
@@ -53,6 +54,8 @@ while [[ "${1:-}" == --* ]]; do
             shift ;;
         --parallel-pathologies)
             PARALLEL_PATHOLOGIES=true; shift ;;
+        --condition)
+            CONDITION="${2:?--condition requires a value (abdominal or chest)}"; shift 2 ;;
         --small-test)
             SMALL_TEST=true
             DATA_SPLIT="train"
@@ -82,13 +85,23 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 LOG_FILE="$LOG_DIR/baseline_test_${TIMESTAMP}.log"
 
 BASE_MODELS="${HF_HOME:-${HOME}/.cache/huggingface/hub}"
-LAB_TEST_MAPPING="$PROJECT_DIR/MIMIC-CDM-IV/lab_test_mapping.pkl"
 
-if [ "$SMALL_TEST" = true ]; then
-    # Quick concurrency test: 2 pathologies, 10 patients each
-    PATHOLOGIES=("appendicitis" "cholecystitis")
+# Pathologies and lab test mapping by condition
+LAB_TEST_MAPPING="$PROJECT_DIR/MIMIC-CDM-IV/lab_test_mapping.pkl"
+if [ "$CONDITION" = "chest" ]; then
+    CARDIAC_TOOLS_FLAG="cardiac_tools=True"
+    if [ "$SMALL_TEST" = true ]; then
+        PATHOLOGIES=("myocardial_infarction" "congestive_heart_failure")
+    else
+        PATHOLOGIES=("myocardial_infarction" "pulmonary_embolism" "congestive_heart_failure" "aortic_stenosis" "mitral_regurgitation")
+    fi
 else
-    PATHOLOGIES=("appendicitis" "cholecystitis" "diverticulitis" "pancreatitis" "cholangitis" "bowel_obstruction" "pyelonephritis")
+    CARDIAC_TOOLS_FLAG=""
+    if [ "$SMALL_TEST" = true ]; then
+        PATHOLOGIES=("appendicitis" "cholecystitis")
+    else
+        PATHOLOGIES=("appendicitis" "cholecystitis" "diverticulitis" "pancreatitis" "cholangitis" "bowel_obstruction" "pyelonephritis")
+    fi
 fi
 
 # ============================================================
@@ -179,6 +192,7 @@ run_zs_pathology() {
     if [ "$PATIENT_SIMULATOR" = "True" ]; then
         CMD+=(patient_simulator=True)
     fi
+    [ -n "$CARDIAC_TOOLS_FLAG" ] && CMD+=("$CARDIAC_TOOLS_FLAG")
     "${CMD[@]}"
 }
 
@@ -270,6 +284,7 @@ run_tot_pathology() {
     if [ "$PATIENT_SIMULATOR" = "True" ]; then
         CMD+=(patient_simulator=True)
     fi
+    [ -n "$CARDIAC_TOOLS_FLAG" ] && CMD+=("$CARDIAC_TOOLS_FLAG")
     "${CMD[@]}"
 }
 

@@ -95,6 +95,38 @@ class DoPhysicalExamination(BaseTool):
         )
 
 
+class DoECG(BaseTool):
+    name: str = "ECG"
+    description: str = "Retrieve the earliest available ECG report."
+    action_results: Dict = {}
+
+    def _run(self, action_input: str = "") -> str:
+        return get_action_results(
+            action=Actions.ECG, action_results=self.action_results
+        )
+
+    async def _arun(self, action_input: str = "") -> str:
+        return get_action_results(
+            action=Actions.ECG, action_results=self.action_results
+        )
+
+
+class DoEchocardiogram(BaseTool):
+    name: str = "Echocardiogram"
+    description: str = "Retrieve the earliest available echocardiogram (Echo) report."
+    action_results: Dict = {}
+
+    def _run(self, action_input: str = "") -> str:
+        return get_action_results(
+            action=Actions.Echocardiogram, action_results=self.action_results
+        )
+
+    async def _arun(self, action_input: str = "") -> str:
+        return get_action_results(
+            action=Actions.Echocardiogram, action_results=self.action_results
+        )
+
+
 class ReadDiagnosticCriteria(BaseTool):
     name: str = "Diagnostic Criteria"
     description: str = "Read diagnostic criteria for a given pathology."

@@ -91,6 +91,14 @@ class PathologyEvaluator(AgentTrajectoryEvaluator):
             if action.tool == "Imaging":
                 self.score_imaging_action(action)
 
+            # Echocardiogram and ECG are standalone tools (not Imaging modalities).
+            # Route them through score_imaging so cardiac evaluators can award points.
+            if action.tool == "Echocardiogram":
+                self.score_echocardiogram_action()
+
+            if action.tool == "ECG":
+                self.score_ecg_action()
+
         # Record number of rounds needed to reach diagnosis
         self.scores["Rounds"] = len(agent_trajectory)
 
@@ -325,6 +333,24 @@ class PathologyEvaluator(AgentTrajectoryEvaluator):
             not valid_imaging_combination
             or imaging_dict in self.answers["Correct Imaging"]
         ):
+            self.answers["Unnecessary Imaging"].append(imaging_dict)
+        else:
+            self.answers["Correct Imaging"].append(imaging_dict)
+
+    def score_echocardiogram_action(self) -> None:
+        """Score the standalone Echocardiogram tool as if it were Imaging(Chest, Echocardiogram)."""
+        imaging_dict = {"region": "Chest", "modality": "Echocardiogram"}
+        valid = self.score_imaging("Chest", "Echocardiogram")
+        if not valid or imaging_dict in self.answers["Correct Imaging"]:
+            self.answers["Unnecessary Imaging"].append(imaging_dict)
+        else:
+            self.answers["Correct Imaging"].append(imaging_dict)
+
+    def score_ecg_action(self) -> None:
+        """Score the standalone ECG tool as if it were Imaging(Chest, ECG)."""
+        imaging_dict = {"region": "Chest", "modality": "ECG"}
+        valid = self.score_imaging("Chest", "ECG")
+        if not valid or imaging_dict in self.answers["Correct Imaging"]:
             self.answers["Unnecessary Imaging"].append(imaging_dict)
         else:
             self.answers["Correct Imaging"].append(imaging_dict)

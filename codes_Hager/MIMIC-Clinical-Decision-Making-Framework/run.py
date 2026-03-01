@@ -31,6 +31,11 @@ from evaluators.pancreatitis_evaluator import PancreatitisEvaluator
 from evaluators.cholangitis_evaluator import CholangitisEvaluator
 from evaluators.bowel_obstruction_evaluator import BowelObstructionEvaluator
 from evaluators.pyelonephritis_evaluator import PyelonephritisEvaluator
+from evaluators.myocardial_infarction_evaluator import MyocardialInfarctionEvaluator
+from evaluators.pulmonary_embolism_evaluator import PulmonaryEmbolismEvaluator
+from evaluators.congestive_heart_failure_evaluator import CongestiveHeartFailureEvaluator
+from evaluators.aortic_stenosis_evaluator import AorticStenosisEvaluator
+from evaluators.mitral_regurgitation_evaluator import MitralRegurgitationEvaluator
 from models.models import CustomLLM
 from agents.agent import build_agent_executor_ZeroShot
 from agents.tot_agent import build_tot_runner
@@ -52,6 +57,16 @@ def load_evaluator(pathology):
         evaluator = BowelObstructionEvaluator()
     elif pathology == "pyelonephritis":
         evaluator = PyelonephritisEvaluator()
+    elif pathology == "myocardial_infarction":
+        evaluator = MyocardialInfarctionEvaluator()
+    elif pathology == "pulmonary_embolism":
+        evaluator = PulmonaryEmbolismEvaluator()
+    elif pathology == "congestive_heart_failure":
+        evaluator = CongestiveHeartFailureEvaluator()
+    elif pathology == "aortic_stenosis":
+        evaluator = AorticStenosisEvaluator()
+    elif pathology == "mitral_regurgitation":
+        evaluator = MitralRegurgitationEvaluator()
     else:
         raise NotImplementedError
     return evaluator
@@ -122,6 +137,8 @@ def run(args: DictConfig):
         run_name += "_CLANNOT"
     if args.get("patient_simulator"):
         run_name += "_PATSIM"
+    if args.get("cardiac_tools"):
+        run_name += "_CARDIAC"
     if args.get("skill_path"):
         skill_name = os.path.basename(args.skill_path).replace(".md", "")
         run_name += f"_SKILL_{skill_name}"
@@ -192,6 +209,7 @@ def run(args: DictConfig):
                 skill_inject=args.get("skill_inject", "examples"),
                 annotate_clinical=args.get("annotate_clinical", False),
                 patient_simulator=patient_sim,
+                cardiac_tools=args.get("cardiac_tools", False),
                 tot_n_generate=args.get("tot_n_generate", 3),
                 tot_breadth=args.get("tot_breadth", 2),
                 tot_max_depth=args.get("tot_max_depth", 20),
@@ -217,6 +235,7 @@ def run(args: DictConfig):
                 skill_inject=args.get("skill_inject", "examples"),
                 annotate_clinical=args.get("annotate_clinical", False),
                 patient_simulator=patient_sim,
+                cardiac_tools=args.get("cardiac_tools", False),
             )
             result = agent_executor({"input": patient_input})
         append_to_pickle_file(results_log_path, {_id: result})

@@ -14,6 +14,11 @@ from agents.prompts import (
     DIAGNOSTIC_CRITERIA_CHOLANGITIS,
     DIAGNOSTIC_CRITERIA_BOWEL_OBSTRUCTION,
     DIAGNOSTIC_CRITERIA_PYELONEPHRITIS,
+    DIAGNOSTIC_CRITERIA_MYOCARDIAL_INFARCTION,
+    DIAGNOSTIC_CRITERIA_PULMONARY_EMBOLISM,
+    DIAGNOSTIC_CRITERIA_CONGESTIVE_HEART_FAILURE,
+    DIAGNOSTIC_CRITERIA_AORTIC_STENOSIS,
+    DIAGNOSTIC_CRITERIA_MITRAL_REGURGITATION,
 )
 
 
@@ -24,6 +29,8 @@ class Actions(Enum):
     Diagnostic_Criteria = "Diagnostic Criteria"
     Final_Diagnosis = "Final Diagnosis"
     Ask_Patient = "Ask Patient"
+    ECG = "ECG"
+    Echocardiogram = "Echocardiogram"
 
 
 def is_valid_action(action: str) -> bool:
@@ -72,10 +79,17 @@ def get_action_results(
             action_input=action_input,
         )
 
+    # Cardiac tools: no-input, return earliest report
+    elif action == Actions.ECG:
+        result_string += retrieve_ecg(action_results=action_results)
+
+    elif action == Actions.Echocardiogram:
+        result_string += retrieve_echocardiogram(action_results=action_results)
+
     # Should never reach here
     else:
         raise ValueError(
-            "The only valid actions are Physical Examination, Laboratory Tests, Imaging, and Diagnostic Criteria. Received: {}".format(
+            "The only valid actions are Physical Examination, Laboratory Tests, Imaging, Diagnostic Criteria, ECG, and Echocardiogram. Received: {}".format(
                 action.value
             )
         )
@@ -194,6 +208,66 @@ def retrieve_imaging(
     return result_string
 
 
+def retrieve_ecg(action_results: Dict) -> str:
+    """Return the earliest available ECG report.
+
+    Expects action_results['ECG'] to be a list of dicts with keys
+    like 'Report', 'Note ID', and 'Charttime'.
+    """
+    ecg_list = action_results.get("ECG", [])
+    if not isinstance(ecg_list, list) or not ecg_list:
+        return "Not available.\n"
+
+    with_time = []
+    without_time = []
+    for idx, e in enumerate(ecg_list):
+        ct = e.get("Charttime")
+        has_time = (ct is not None) and (str(ct).lower() != "nat")
+        (with_time if has_time else without_time).append((idx, e))
+
+    if with_time:
+        try:
+            with_time.sort(key=lambda t: str(t[1].get("Charttime")))
+        except Exception:
+            with_time.sort(key=lambda t: t[0])
+        earliest_entry = with_time[0][1]
+    else:
+        earliest_entry = without_time[0][1]
+
+    report = str(earliest_entry.get("Report", "")).strip() or "Not available."
+    return f"{report}\n"
+
+
+def retrieve_echocardiogram(action_results: Dict) -> str:
+    """Return the earliest available Echocardiogram (Echo) report.
+
+    Expects action_results['Echo'] to be a list of dicts with keys
+    like 'Report', 'Note ID', and 'Charttime'.
+    """
+    echo_list = action_results.get("Echo", [])
+    if not isinstance(echo_list, list) or not echo_list:
+        return "Not available.\n"
+
+    with_time = []
+    without_time = []
+    for idx, e in enumerate(echo_list):
+        ct = e.get("Charttime")
+        has_time = (ct is not None) and (str(ct).lower() != "nat")
+        (with_time if has_time else without_time).append((idx, e))
+
+    if with_time:
+        try:
+            with_time.sort(key=lambda t: str(t[1].get("Charttime")))
+        except Exception:
+            with_time.sort(key=lambda t: t[0])
+        earliest_entry = with_time[0][1]
+    else:
+        earliest_entry = without_time[0][1]
+
+    report = str(earliest_entry.get("Report", "")).strip() or "Not available."
+    return f"{report}\n"
+
+
 def retrieve_diagnostic_criteria(
     action_input: Union[List[str], Dict],
 ) -> str:
@@ -214,6 +288,12 @@ def retrieve_diagnostic_criteria(
         "cholangitis": DIAGNOSTIC_CRITERIA_CHOLANGITIS,
         "bowel obstruction": DIAGNOSTIC_CRITERIA_BOWEL_OBSTRUCTION,
         "pyelonephritis": DIAGNOSTIC_CRITERIA_PYELONEPHRITIS,
+        "myocardial infarction": DIAGNOSTIC_CRITERIA_MYOCARDIAL_INFARCTION,
+        "pulmonary embolism": DIAGNOSTIC_CRITERIA_PULMONARY_EMBOLISM,
+        "congestive heart failure": DIAGNOSTIC_CRITERIA_CONGESTIVE_HEART_FAILURE,
+        "heart failure": DIAGNOSTIC_CRITERIA_CONGESTIVE_HEART_FAILURE,
+        "aortic stenosis": DIAGNOSTIC_CRITERIA_AORTIC_STENOSIS,
+        "mitral regurgitation": DIAGNOSTIC_CRITERIA_MITRAL_REGURGITATION,
     }
     for patho in action_input:
         patho_match, score = process.extractOne(patho, name_to_criteria.keys())

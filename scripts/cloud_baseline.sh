@@ -44,6 +44,7 @@ INCLUDE_REMAINING=false
 SKILL_PATH=""
 SKILL_INJECT="examples"
 ANNOTATE_CLINICAL="False"
+CONDITION="abdominal"
 PARALLEL=false
 DRY_RUN=false
 SELECTED_PATHOLOGIES=()
@@ -72,6 +73,8 @@ while [[ "${1:-}" == --* ]]; do
             shift 2 ;;
         --parallel)
             PARALLEL=true; shift ;;
+        --condition)
+            CONDITION="${2:?--condition requires a value (abdominal or chest)}"; shift 2 ;;
         --dry-run)
             DRY_RUN=true; shift ;;
         *)
@@ -98,9 +101,15 @@ TRAJ_DIR="$PROJECT_DIR/trajectories"
 LOG_DIR="$PROJECT_DIR/logs"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
+# Pathologies and lab test mapping by condition
 LAB_TEST_MAPPING="$PROJECT_DIR/MIMIC-CDM-IV/lab_test_mapping.pkl"
-
-ALL_PATHOLOGIES=("appendicitis" "cholecystitis" "diverticulitis" "pancreatitis" "cholangitis" "bowel_obstruction" "pyelonephritis")
+if [ "$CONDITION" = "chest" ]; then
+    ALL_PATHOLOGIES=("myocardial_infarction" "pulmonary_embolism" "congestive_heart_failure" "aortic_stenosis" "mitral_regurgitation")
+    CARDIAC_TOOLS_FLAG="cardiac_tools=True"
+else
+    ALL_PATHOLOGIES=("appendicitis" "cholecystitis" "diverticulitis" "pancreatitis" "cholangitis" "bowel_obstruction" "pyelonephritis")
+    CARDIAC_TOOLS_FLAG=""
+fi
 
 if [ ${#SELECTED_PATHOLOGIES[@]} -gt 0 ]; then
     PATHOLOGIES=("${SELECTED_PATHOLOGIES[@]}")
@@ -253,6 +262,7 @@ run_model_pathology() {
     if [ -n "$SKILL_PATH" ]; then
         CMD+=(skill_path="$SKILL_PATH" skill_inject="$SKILL_INJECT")
     fi
+    [ -n "$CARDIAC_TOOLS_FLAG" ] && CMD+=("$CARDIAC_TOOLS_FLAG")
 
     if [ "$DRY_RUN" = true ]; then
         echo "  [DRY RUN] cd $FRAMEWORK_DIR && ${CMD[*]}"

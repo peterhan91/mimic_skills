@@ -22,14 +22,26 @@ A LangChain ZeroShotAgent that iteratively diagnoses patients:
 Input:  Patient History (HPI + PMH + Social/Family)
 Loop:   Thought → Action → Observation  (max 10 iterations)
 Tools:  Physical Examination, Laboratory Tests, Imaging, [Diagnostic Criteria]
+        [ECG, Echocardiogram — chest condition only, via cardiac_tools=True]
 Output: Final Diagnosis + Treatment
 Eval:   PathologyEvaluator (per-pathology, multi-metric)
 ```
 
+**Condition domains** (selected via `--condition abdominal|chest`):
+
+| Domain | Train Pathologies | Test-Only Pathologies | Extra Tools |
+|---|---|---|---|
+| **Abdominal** (default) | appendicitis, cholecystitis, diverticulitis, pancreatitis | cholangitis, bowel_obstruction, pyelonephritis | — |
+| **Chest** (cardiac) | myocardial_infarction, pulmonary_embolism, congestive_heart_failure | aortic_stenosis, mitral_regurgitation | ECG, Echocardiogram |
+
+- CDM-III data: MI, CHF, AS, MR (MIMIC-III hadm_ids, ICD-9 procedures)
+- CDM-IV data: PE (MIMIC-IV hadm_ids, ICD-10 procedures)
+- Lab test mapping: CDM-III uses `MIMIC-CDM-III/lab_test_mapping_III.pkl`; CDM-IV uses `MIMIC-CDM-IV/lab_test_mapping.pkl`
+
 **Key files:**
 - `codes_Hager/.../agents/prompts.py` — CHAT_TEMPLATE (system prompt)
 - `codes_Hager/.../agents/agent.py` — CustomZeroShotAgent + build_agent_executor_ZeroShot
-- `codes_Hager/.../tools/Actions.py` — Tool implementations (PE, Labs, Imaging, DiagCrit)
+- `codes_Hager/.../tools/Actions.py` — Tool implementations (PE, Labs, Imaging, DiagCrit, ECG, Echo)
 - `codes_Hager/.../evaluators/pathology_evaluator.py` — Base evaluator with trajectory scoring
 - `codes_Hager/.../evaluators/{pathology}_evaluator.py` — Per-pathology evaluators
 - `codes_Hager/.../run.py` — Main evaluation entry point (Hydra config)
@@ -772,26 +784,40 @@ mimic_skills/
 │   ├── evotest_full.sh              # Full pipeline: train → test; all flags supported
 │   ├── container.sh                 # Apptainer container launcher (GPU server)
 │   └── start_vllm.sh               # Start vLLM server
-├── data_splits/                       # Created by split_data.py
-│   ├── appendicitis/
+├── data_splits/                       # Created by split_data.py (--condition abdominal|chest)
+│   ├── appendicitis/                  # Abdominal pathologies
 │   │   ├── train.pkl (10)
 │   │   ├── test.pkl (100)
 │   │   └── remaining.pkl (809)
 │   ├── cholecystitis/ (10/100/514)
 │   ├── diverticulitis/ (10/100/134)
-│   └── pancreatitis/ (10/100/391)
+│   ├── pancreatitis/ (10/100/391)
+│   ├── myocardial_infarction/         # Chest pathologies (CDM-III/IV)
+│   ├── pulmonary_embolism/
+│   ├── congestive_heart_failure/
+│   ├── aortic_stenosis/
+│   └── mitral_regurgitation/
 ├── traces/                            # Generated reasoning traces
 ├── skills/                            # Generated SKILL.md files (sanitized)
 │   ├── v1/acute_abdominal_pain.md     # General skill (all pathologies)
 │   ├── v2/acute_abdominal_pain.md     # Refined after v1 eval
-│   ├── evo/                           # EvoTest: ZeroShot, sim OFF
-│   ├── evo_patsim/                    # EvoTest: ZeroShot, sim ON
-│   ├── evo_tot/                       # EvoTest: ToT, sim OFF
-│   └── evo_tot_patsim/               # EvoTest: ToT, sim ON
+│   ├── evo/                           # EvoTest: ZeroShot, sim OFF (abdominal)
+│   ├── evo_patsim/                    # EvoTest: ZeroShot, sim ON (abdominal)
+│   ├── evo_tot/                       # EvoTest: ToT, sim OFF (abdominal)
+│   ├── evo_tot_patsim/               # EvoTest: ToT, sim ON (abdominal)
+│   ├── evo_chest/                     # EvoTest: ZeroShot, sim OFF (chest)
+│   ├── evo_patsim_chest/             # EvoTest: ZeroShot, sim ON (chest)
+│   ├── evo_tot_chest/                # EvoTest: ToT, sim OFF (chest)
+│   └── evo_tot_patsim_chest/         # EvoTest: ToT, sim ON (chest)
 ├── results/                           # Evaluation results from GPU server
 ├── codes_Hager/                       # Hager's framework (modified)
-├── codes_openai_agent/                # OpenAI Agents SDK variant (Approach 6)
-├── MIMIC-CDM-IV/                      # Patient data (2,400 curated cases)
+├── MIMIC-CDM-III/                     # Cardiac patient data (CDM-III)
+│   ├── myocardial_infarction_hadm_info_first_diag.pkl
+│   ├── congestive_heart_failure_hadm_info_first_diag.pkl
+│   ├── aortic_stenosis_hadm_info_first_diag.pkl
+│   ├── mitral_regurgitation_hadm_info_first_diag.pkl
+│   └── lab_test_mapping_III.pkl
+├── MIMIC-CDM-IV/                      # Patient data (2,400+ curated cases)
 ├── guidelines/                        # Clinical guideline summaries per pathology
 ├── docs/                              # Reference materials
 │   ├── WORKFLOW.md                    # Step-by-step workflow (local + GPU server)
@@ -827,8 +853,9 @@ mimic_skills/
 |---|---|
 | `/Users/tianyuhan/Documents/GitHub/MIMIC-CDM/data/` | Official MIMIC-CDM release: 4 pathology pkls + lab_test_mapping.pkl + CSVs (discharge_diagnosis, physical_examination, laboratory_tests, radiology_reports, etc.) |
 | `/Users/tianyuhan/Documents/GitHub/MIMIC-Clinical-Decision-Making-Dataset/` | Original dataset creation code (CreateDataset.py) + all 4 pathology pkls (clean, first_diag variants) |
-| `./MIMIC-CDM-IV/` | In-repo copy: 11 pathology pkls + train/test splits (appendicitis through subarachnoid_hemorrhage) |
-| `./data_splits/` | Our train(10)/test(100)/remaining splits per pathology (created by `scripts/split_data.py`) |
+| `./MIMIC-CDM-III/` | Cardiac pathology pkls (MI, CHF, AS, MR) + lab_test_mapping_III.pkl — from MIMIC-Plain CDM_III |
+| `./MIMIC-CDM-IV/` | In-repo copy: 11+ pathology pkls including PE (appendicitis through subarachnoid_hemorrhage + pulmonary_embolism) |
+| `./data_splits/` | Our train/test/remaining splits per pathology — abdominal + chest (created by `scripts/split_data.py --condition abdominal|chest`) |
 
 ### Related Repos (cloned locally)
 

@@ -26,8 +26,13 @@ Thumbs.db
 # Secrets
 .env
 
-# Unused data (not needed by pipeline)
-MIMIC-CDM-III/
+# MIMIC-CDM data: whitelist specific pkl files
+MIMIC-CDM-III/*
+!MIMIC-CDM-III/myocardial_infarction_hadm_info_first_diag.pkl
+!MIMIC-CDM-III/congestive_heart_failure_hadm_info_first_diag.pkl
+!MIMIC-CDM-III/aortic_stenosis_hadm_info_first_diag.pkl
+!MIMIC-CDM-III/mitral_regurgitation_hadm_info_first_diag.pkl
+!MIMIC-CDM-III/lab_test_mapping_III.pkl
 MIMIC-CDM-IV/*_hadm_info_first_diag.pkl
 !MIMIC-CDM-IV/appendicitis_hadm_info_first_diag.pkl
 !MIMIC-CDM-IV/cholecystitis_hadm_info_first_diag.pkl
@@ -36,6 +41,7 @@ MIMIC-CDM-IV/*_hadm_info_first_diag.pkl
 !MIMIC-CDM-IV/cholangitis_hadm_info_first_diag.pkl
 !MIMIC-CDM-IV/bowel_obstruction_hadm_info_first_diag.pkl
 !MIMIC-CDM-IV/pyelonephritis_hadm_info_first_diag.pkl
+!MIMIC-CDM-IV/pulmonary_embolism_hadm_info_first_diag.pkl
 codes_Hager/MIMIC-Clinical-Decision-Making-Analysis/
 codes_Hager/MIMIC-Clinical-Decision-Making-Dataset/
 data_splits/*/remaining.pkl
@@ -52,6 +58,10 @@ evotest_state/
 evotest_state_tot/
 evotest_state_patsim/
 evotest_state_tot_patsim/
+evotest_state_chest/
+evotest_state_tot_chest/
+evotest_state_patsim_chest/
+evotest_state_tot_patsim_chest/
 evotest_state_sdk/
 evotest_state_old_no_guidelines/
 

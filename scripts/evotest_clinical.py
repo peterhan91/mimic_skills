@@ -81,13 +81,19 @@ from evolve_skill import (
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-ALL_PATHOLOGIES = [
+ABDOMINAL_PATHOLOGIES = [
     "appendicitis", "cholecystitis", "diverticulitis", "pancreatitis",
     "cholangitis", "bowel_obstruction", "pyelonephritis",
 ]
+CHEST_PATHOLOGIES = [
+    "myocardial_infarction", "pulmonary_embolism", "congestive_heart_failure",
+    "aortic_stenosis", "mitral_regurgitation",
+]
+ALL_PATHOLOGIES = ABDOMINAL_PATHOLOGIES  # default for backwards compatibility
 
 # Max "Laboratory Tests" score per pathology (from evaluators: 1 point per required category)
 MAX_LAB_SCORE = {
+    # Abdominal
     "appendicitis": 1,        # Inflammation
     "cholecystitis": 3,       # Inflammation, Liver, Gallbladder
     "diverticulitis": 1,      # Inflammation
@@ -95,6 +101,12 @@ MAX_LAB_SCORE = {
     "cholangitis": 3,         # Inflammation, Liver, Biliary
     "bowel_obstruction": 2,   # Inflammation, Electrolytes
     "pyelonephritis": 3,      # Inflammation, Renal, Urinalysis
+    # Cardiac
+    "myocardial_infarction": 2,         # Cardiac, Inflammation
+    "pulmonary_embolism": 1,            # Coagulation (Troponin moved to neutral)
+    "congestive_heart_failure": 2,      # Cardiac, Renal
+    "aortic_stenosis": 1,              # Cardiac
+    "mitral_regurgitation": 1,         # Cardiac
 }
 STATE_DIR = PROJECT_DIR / "evotest_state"
 STATE_FILE = STATE_DIR / "state.json"
@@ -221,12 +233,24 @@ def run_subprocess(cmd, description, cwd=None, dry_run=False):
 class ClinicalEvoTest:
     def __init__(self, args):
         self.args = args
-        self.pathologies = getattr(args, "pathologies", None) or ALL_PATHOLOGIES
         self.nodes = []
         self.best_node_idx = None
         self.best_score = float("-inf")
         self.last_episode_score = None
         self.completed_episodes = 0
+
+        # Condition (abdominal or chest)
+        self.condition = getattr(args, "condition", "abdominal")
+        self.cardiac_tools = getattr(args, "cardiac_tools", "False")
+
+        # Select pathologies based on condition (CLI --pathologies overrides)
+        cli_pathologies = getattr(args, "pathologies", None)
+        if cli_pathologies and cli_pathologies != ALL_PATHOLOGIES:
+            self.pathologies = cli_pathologies
+        elif self.condition == "chest":
+            self.pathologies = CHEST_PATHOLOGIES
+        else:
+            self.pathologies = ABDOMINAL_PATHOLOGIES
 
         # Paths
         self.data_dir = PROJECT_DIR / "data_splits"
@@ -234,10 +258,16 @@ class ClinicalEvoTest:
         self.traj_dir = PROJECT_DIR / "trajectories"
         self.skills_dir = PROJECT_DIR / "skills" / "evo"
         self.log_dir = PROJECT_DIR / "logs"
+
+        # CDM-IV lab test mapping covers both abdominal and cardiac itemids
         self.lab_test_mapping = PROJECT_DIR / "MIMIC-CDM-IV" / "lab_test_mapping.pkl"
+
         self.base_models = os.environ.get(
             "HF_HOME", os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
         )
+
+        # Condition suffix for experiment dirs
+        cond_suffix = "_chest" if self.condition == "chest" else ""
 
         # Agent type + patient sim → 2×2 matrix of parallel experiment dirs
         self.agent_type = getattr(args, "agent", "ZeroShot")
@@ -245,20 +275,20 @@ class ClinicalEvoTest:
         is_patsim = getattr(args, "patient_simulator", "False").lower() == "true"
 
         if is_tot and is_patsim:
-            self.state_dir = PROJECT_DIR / "evotest_state_tot_patsim"
-            self.skills_dir = PROJECT_DIR / "skills" / "evo_tot_patsim"
+            self.state_dir = PROJECT_DIR / f"evotest_state_tot_patsim{cond_suffix}"
+            self.skills_dir = PROJECT_DIR / "skills" / f"evo_tot_patsim{cond_suffix}"
             self._run_prefix = "totps"
         elif is_tot:
-            self.state_dir = PROJECT_DIR / "evotest_state_tot"
-            self.skills_dir = PROJECT_DIR / "skills" / "evo_tot"
+            self.state_dir = PROJECT_DIR / f"evotest_state_tot{cond_suffix}"
+            self.skills_dir = PROJECT_DIR / "skills" / f"evo_tot{cond_suffix}"
             self._run_prefix = "tot"
         elif is_patsim:
-            self.state_dir = PROJECT_DIR / "evotest_state_patsim"
-            self.skills_dir = PROJECT_DIR / "skills" / "evo_patsim"
+            self.state_dir = PROJECT_DIR / f"evotest_state_patsim{cond_suffix}"
+            self.skills_dir = PROJECT_DIR / "skills" / f"evo_patsim{cond_suffix}"
             self._run_prefix = "evops"
         else:
-            self.state_dir = STATE_DIR
-            self.skills_dir = PROJECT_DIR / "skills" / "evo"
+            self.state_dir = PROJECT_DIR / f"evotest_state{cond_suffix}"
+            self.skills_dir = PROJECT_DIR / "skills" / f"evo{cond_suffix}"
             self._run_prefix = "evo"
         self.state_file = self.state_dir / "state.json"
         self.episode_log = self.state_dir / "episode_log.jsonl"
@@ -475,6 +505,9 @@ class ClinicalEvoTest:
                 val = getattr(self.args, key, None)
                 if val is not None:
                     run_cmd.append(f"{key}={val}")
+        # Cardiac tools for chest condition
+        if self.cardiac_tools.lower() == "true":
+            run_cmd.append("cardiac_tools=True")
 
         ok = run_subprocess(
             run_cmd,
@@ -749,11 +782,12 @@ class ClinicalEvoTest:
         # --- Section 6: Patient simulator context ---
         patient_sim_section = ""
         if self.args.patient_simulator.lower() == "true":
-            patient_sim_section = """## Patient Simulator Mode (ACTIVE)
+            cardiac_extra = ", `ECG`, `Echocardiogram`" if self.condition == "chest" else ""
+            patient_sim_section = f"""## Patient Simulator Mode (ACTIVE)
 
 The agent operates in **patient simulator mode**: it receives ONLY a brief chief complaint (e.g., "___ presents with 4 days of RLQ pain.") instead of the full Patient History. It must actively gather history by calling the **"Ask Patient"** tool to ask questions.
 
-The agent has these tools: `Physical Examination`, `Laboratory Tests`, `Imaging`, `Ask Patient`
+The agent has these tools: `Physical Examination`, `Laboratory Tests`, `Imaging`, `Ask Patient`{cardiac_extra}
 
 **Key constraints:**
 - The agent does NOT know PMH, medications, social history, or family history at the start
@@ -762,6 +796,26 @@ The agent has these tools: `Physical Examination`, `Laboratory Tests`, `Imaging`
 - The patient responds naturally (may be vague, uses lay terms, does not volunteer diagnoses)
 
 """
+
+        # Condition-dependent prompt content
+        if self.condition == "chest":
+            condition_label = "acute chest pain / cardiac symptoms"
+            pathology_examples = "myocardial infarction, pulmonary embolism, heart failure, valvular disease"
+            cardiac_tools_note = "\n- **When to use ECG and Echocardiogram** — ECG should be ordered early for any cardiac-sounding presentation; Echocardiogram for suspected structural/valvular disease or heart failure"
+            treatment_guidance = (
+                "(a) emergent intervention (PCI, thrombolysis) vs conservative management, "
+                "(b) anticoagulation if thrombotic cause, "
+                "(c) supportive care (oxygen, IV fluids, cardiac monitoring, medications)"
+            )
+        else:
+            condition_label = "acute abdominal pain"
+            pathology_examples = "appendicitis, cholecystitis, diverticulitis, pancreatitis"
+            cardiac_tools_note = ""
+            treatment_guidance = (
+                "(a) surgical vs conservative management based on severity, "
+                "(b) antibiotics if infection suspected, "
+                "(c) supportive care (IV fluids, analgesia, monitoring)"
+            )
 
         prompt = f"""You are a clinical AI system optimizer. Your task is to analyze diagnostic agent trajectories and generate an improved clinical reasoning skill.
 
@@ -783,27 +837,31 @@ The agent has these tools: `Physical Examination`, `Laboratory Tests`, `Imaging`
 
 ## Your Task
 
-Generate an improved GENERAL clinical reasoning workflow skill for diagnosing patients presenting with acute abdominal pain. This skill must:
+Generate an improved GENERAL clinical reasoning workflow skill for diagnosing patients presenting with {condition_label}. This skill must:
 
 1. **Teach hypothesis-driven diagnostic reasoning** — maintain a running differential diagnosis, and choose each test to maximally reduce uncertainty between remaining hypotheses
 2. **Address the specific failure patterns above** — focus on what went wrong and teach the correct approach
 3. **Be grounded in evidence** — use both the discharge summary evidence AND the clinical practice guidelines provided
-4. **Work across ALL pathologies** — must handle appendicitis, cholecystitis, diverticulitis, pancreatitis and any other acute abdominal pain cause
+4. **Work across ALL pathologies** — must handle {pathology_examples} and any other {condition_label} cause
 5. **Stay under 500 tokens** — concise, actionable instructions
 6. **NOT use disease names** — use ____ as a mask for any disease or procedure name that would reveal the diagnosis
 
 The skill should be written as markdown with clear step-by-step instructions:
 - When to do Physical Examination (should always be FIRST)
 - How to select labs based on exam findings (not shotgun ordering)
-- How to choose imaging modality based on suspected pathology location
+- How to choose imaging modality based on suspected pathology location{cardiac_tools_note}
 - How to interpret lab values in context
-- **How to recommend treatment** — ALWAYS include a Treatment section with: (a) surgical vs conservative management based on severity, (b) antibiotics if infection suspected, (c) supportive care (IV fluids, analgesia, monitoring). Treatment recommendations are scored and directly affect the composite score.
+- **How to recommend treatment** — ALWAYS include a Treatment section with: {treatment_guidance}. Treatment recommendations are scored and directly affect the composite score.
 - How to maintain and update a differential diagnosis after each observation"""
 
         if self.args.patient_simulator.lower() == "true":
             prompt += """
-- **How to efficiently gather patient history via "Ask Patient"** — what to ask first (pain characterization, PMH, medications, social habits), how to combine questions, when to stop asking and move to examination
-- **The skill MUST mention "Ask Patient" as an available tool** and teach the agent to use it before or alongside Physical Examination"""
+- **How to efficiently gather patient history via "Ask Patient"** — what to ask first ({history_questions}), how to combine questions, when to stop asking and move to examination
+- **The skill MUST mention "Ask Patient" as an available tool** and teach the agent to use it before or alongside Physical Examination""".format(
+                history_questions="chest pain characterization, cardiac risk factors, PMH, medications, social habits"
+                if self.condition == "chest" else
+                "pain characterization, PMH, medications, social habits"
+            )
 
         prompt += """
 
@@ -889,8 +947,10 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
             return
 
         logger.info(f"{'='*70}")
-        logger.info(f"EvoTest Clinical | {total_episodes} episodes | {len(self.pathologies)} pathologies | agent={self.agent_type}")
+        logger.info(f"EvoTest Clinical | {total_episodes} episodes | {len(self.pathologies)} pathologies | agent={self.agent_type} | condition={self.condition}")
         logger.info(f"{'='*70}")
+        logger.info(f"  Condition:        {self.condition}")
+        logger.info(f"  Cardiac tools:    {self.cardiac_tools}")
         logger.info(f"  Agent:            {self.agent_type}")
         logger.info(f"  Model:            {self.args.model}")
         logger.info(f"  Evolver:          {self.args.evolver_model}")
@@ -1225,6 +1285,14 @@ def main():
     parser.add_argument(
         "--tot-eval-temperature", type=float, default=None, dest="tot_eval_temperature",
         help="ToT: temperature for path evaluation (default: from config)"
+    )
+    parser.add_argument(
+        "--condition", type=str, default="abdominal", choices=["abdominal", "chest"],
+        help="Condition domain: abdominal (default) or chest (cardiac)"
+    )
+    parser.add_argument(
+        "--cardiac-tools", type=str, default="False",
+        help="Enable cardiac tools (ECG, Echocardiogram) — auto-set for chest condition"
     )
     parser.add_argument(
         "--parallel-pathologies", action="store_true",

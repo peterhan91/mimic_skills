@@ -14,10 +14,15 @@ import argparse
 import shutil
 from pathlib import Path
 
-PATHOLOGIES = [
+ABDOMINAL_PATHOLOGIES = [
     "appendicitis", "cholecystitis", "diverticulitis", "pancreatitis",
     "cholangitis", "bowel_obstruction", "pyelonephritis",
 ]
+CHEST_PATHOLOGIES = [
+    "myocardial_infarction", "pulmonary_embolism", "congestive_heart_failure",
+    "aortic_stenosis", "mitral_regurgitation",
+]
+PATHOLOGIES = ABDOMINAL_PATHOLOGIES + CHEST_PATHOLOGIES
 SPLITS_DIR = Path(__file__).resolve().parent.parent / "data_splits"
 
 

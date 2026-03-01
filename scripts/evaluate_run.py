@@ -33,6 +33,11 @@ from evaluators.pancreatitis_evaluator import PancreatitisEvaluator
 from evaluators.cholangitis_evaluator import CholangitisEvaluator
 from evaluators.bowel_obstruction_evaluator import BowelObstructionEvaluator
 from evaluators.pyelonephritis_evaluator import PyelonephritisEvaluator
+from evaluators.myocardial_infarction_evaluator import MyocardialInfarctionEvaluator
+from evaluators.pulmonary_embolism_evaluator import PulmonaryEmbolismEvaluator
+from evaluators.congestive_heart_failure_evaluator import CongestiveHeartFailureEvaluator
+from evaluators.aortic_stenosis_evaluator import AorticStenosisEvaluator
+from evaluators.mitral_regurgitation_evaluator import MitralRegurgitationEvaluator
 
 
 EVALUATORS = {
@@ -43,6 +48,11 @@ EVALUATORS = {
     "cholangitis": CholangitisEvaluator,
     "bowel_obstruction": BowelObstructionEvaluator,
     "pyelonephritis": PyelonephritisEvaluator,
+    "myocardial_infarction": MyocardialInfarctionEvaluator,
+    "pulmonary_embolism": PulmonaryEmbolismEvaluator,
+    "congestive_heart_failure": CongestiveHeartFailureEvaluator,
+    "aortic_stenosis": AorticStenosisEvaluator,
+    "mitral_regurgitation": MitralRegurgitationEvaluator,
 }
 
 

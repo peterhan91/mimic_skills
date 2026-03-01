@@ -49,6 +49,7 @@ RESUME=false
 AGENT="ZeroShot"
 PATIENT_SIMULATOR="True"
 PARALLEL_PATHOLOGIES=false
+CONDITION="abdominal"
 TOT_MAX_DEPTH=""
 TOT_BREADTH=""
 TOT_N_GENERATE=""
@@ -63,6 +64,8 @@ while [[ "${1:-}" == --* ]]; do
             PATIENT_SIMULATOR="False"; shift ;;
         --parallel-pathologies)
             PARALLEL_PATHOLOGIES=true; shift ;;
+        --condition)
+            CONDITION="${2:?--condition requires a value (abdominal or chest)}"; shift 2 ;;
         --tot-max-depth)
             TOT_MAX_DEPTH="${2:?--tot-max-depth requires a value}"; shift 2 ;;
         --tot-breadth)
@@ -82,30 +85,39 @@ EVOLVER_MODEL="${3:-claude-opus-4-6}"
 ANNOTATE_CLINICAL="${4:-True}"
 INITIAL_SKILL="${5:-}"
 
+# Condition suffix for experiment dirs
+COND_SUFFIX=""
+[ "$CONDITION" = "chest" ] && COND_SUFFIX="_chest"
+
 # Agent × patient-sim → 2×2 matrix of parallel experiment dirs
 if [ "$AGENT" = "ToT" ] && [ "$PATIENT_SIMULATOR" = "True" ]; then
-    SKILLS_DIR="$PROJECT_DIR/skills/evo_tot_patsim"
-    STATE_FILE="$PROJECT_DIR/evotest_state_tot_patsim/state.json"
+    SKILLS_DIR="$PROJECT_DIR/skills/evo_tot_patsim${COND_SUFFIX}"
+    STATE_FILE="$PROJECT_DIR/evotest_state_tot_patsim${COND_SUFFIX}/state.json"
     RUN_PREFIX="totps"
 elif [ "$AGENT" = "ToT" ]; then
-    SKILLS_DIR="$PROJECT_DIR/skills/evo_tot"
-    STATE_FILE="$PROJECT_DIR/evotest_state_tot/state.json"
+    SKILLS_DIR="$PROJECT_DIR/skills/evo_tot${COND_SUFFIX}"
+    STATE_FILE="$PROJECT_DIR/evotest_state_tot${COND_SUFFIX}/state.json"
     RUN_PREFIX="tot"
 elif [ "$PATIENT_SIMULATOR" = "True" ]; then
-    SKILLS_DIR="$PROJECT_DIR/skills/evo_patsim"
-    STATE_FILE="$PROJECT_DIR/evotest_state_patsim/state.json"
+    SKILLS_DIR="$PROJECT_DIR/skills/evo_patsim${COND_SUFFIX}"
+    STATE_FILE="$PROJECT_DIR/evotest_state_patsim${COND_SUFFIX}/state.json"
     RUN_PREFIX="evops"
 else
-    SKILLS_DIR="$PROJECT_DIR/skills/evo"
-    STATE_FILE="$PROJECT_DIR/evotest_state/state.json"
+    SKILLS_DIR="$PROJECT_DIR/skills/evo${COND_SUFFIX}"
+    STATE_FILE="$PROJECT_DIR/evotest_state${COND_SUFFIX}/state.json"
     RUN_PREFIX="evo"
 fi
 
 # Detect Python (micromamba env, MIMIC_PYTHON override, or bare python)
 source "$(dirname "$0")/_detect_python.sh"
 
-# Train on 4 original pathologies; test on all 7 (via evotest_test.sh)
-TRAIN_PATHOLOGIES=(appendicitis cholecystitis diverticulitis pancreatitis)
+# Pathologies by condition
+if [ "$CONDITION" = "chest" ]; then
+    TRAIN_PATHOLOGIES=(myocardial_infarction pulmonary_embolism congestive_heart_failure)
+else
+    # Train on 4 original pathologies; test on all 7 (via evotest_test.sh)
+    TRAIN_PATHOLOGIES=(appendicitis cholecystitis diverticulitis pancreatitis)
+fi
 
 LOG_FILE="$LOG_DIR/evotest_${TIMESTAMP}.log"
 mkdir -p "$LOG_DIR"
@@ -117,6 +129,7 @@ echo "============================================================"
 echo "EVOTEST EVOLUTIONARY OPTIMIZATION"
 echo "============================================================"
 echo ""
+echo "  Condition:         $CONDITION"
 echo "  Agent:             $AGENT"
 echo "  Episodes:          $EPISODES"
 echo "  Model:             $MODEL"
@@ -144,7 +157,7 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
     exit 1
 fi
 
-# Check data prerequisites
+# Check data prerequisites — CDM-IV mapping covers both abdominal and cardiac itemids
 LAB_TEST_MAPPING="$PROJECT_DIR/MIMIC-CDM-IV/lab_test_mapping.pkl"
 [ -f "$LAB_TEST_MAPPING" ] || { echo "ERROR: Lab test mapping not found: $LAB_TEST_MAPPING"; exit 1; }
 
@@ -170,8 +183,14 @@ EVOTEST_CMD=(
     --annotate-clinical "$ANNOTATE_CLINICAL"
     --patient-simulator "$PATIENT_SIMULATOR"
     --agent "$AGENT"
+    --condition "$CONDITION"
     --pathologies "${TRAIN_PATHOLOGIES[@]}"
 )
+
+# Pass cardiac tools flag for chest condition
+if [ "$CONDITION" = "chest" ]; then
+    EVOTEST_CMD+=(--cardiac-tools True)
+fi
 
 if [ "$RESUME" = true ]; then
     EVOTEST_CMD+=(--resume)
