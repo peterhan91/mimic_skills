@@ -6,6 +6,7 @@ or max depth.
 """
 
 import copy
+import json
 import pickle
 import re
 from dataclasses import dataclass, field
@@ -98,6 +99,7 @@ class TreeOfThoughtsRunner:
         temperature: float = 0.7,
         eval_temperature: float = 0.0,
         patient_simulator=None,
+        evidence_memory=False,
     ):
         self.llm = llm
         self.prompt = prompt
@@ -113,6 +115,7 @@ class TreeOfThoughtsRunner:
         self.temperature = temperature
         self.eval_temperature = eval_temperature
         self.patient_simulator = patient_simulator
+        self.evidence_memory = evidence_memory
         self.cache = ToolResultCache()
 
     # ── public interface (matches AgentExecutor.__call__) ────────────
@@ -337,6 +340,47 @@ class TreeOfThoughtsRunner:
             logger.warning(f"[ToT] Tool {tool_name} raised {type(e).__name__}: {e}")
             return f"Tool error: {e}", imaging_state, sim_history
 
+    # ── EVIDENCE MEMORY ──────────────────────────────────────────────
+
+    def _build_evidence_summary(
+        self, steps: List[Tuple[AgentAction, str]]
+    ) -> str:
+        """Build structured evidence JSON from tool observations only."""
+        tool_names = list(self.tools.keys())
+        evidence = {}
+        for action, observation in steps:
+            tool = action.tool
+            obs = observation.strip()
+            if not obs or tool not in tool_names:
+                continue
+            if tool == "Physical Examination":
+                evidence["physical_exam"] = obs
+            elif tool == "Laboratory Tests":
+                evidence.setdefault("labs", [])
+                if obs not in evidence["labs"]:
+                    evidence["labs"].append(obs)
+            elif tool == "Imaging":
+                evidence.setdefault("imaging", [])
+                if obs not in evidence["imaging"]:
+                    evidence["imaging"].append(obs)
+            elif tool == "ECG":
+                evidence.setdefault("ecg", [])
+                if obs not in evidence["ecg"]:
+                    evidence["ecg"].append(obs)
+            elif tool == "Echocardiogram":
+                evidence.setdefault("echocardiogram", [])
+                if obs not in evidence["echocardiogram"]:
+                    evidence["echocardiogram"].append(obs)
+            elif tool == "Ask Patient":
+                evidence.setdefault("patient_responses", [])
+                if obs not in evidence["patient_responses"]:
+                    evidence["patient_responses"].append(obs)
+            elif tool == "Diagnostic Criteria":
+                evidence.setdefault("diagnostic_criteria", [])
+                if obs not in evidence["diagnostic_criteria"]:
+                    evidence["diagnostic_criteria"].append(obs)
+        return json.dumps(evidence, indent=2)
+
     # ── SCRATCHPAD FORMATTING ───────────────────────────────────────
 
     def _build_scratchpad(
@@ -354,6 +398,19 @@ class TreeOfThoughtsRunner:
                 f"{self.tags['ai_tag_start']}"
                 f"Thought:"
             )
+
+        # Append evidence summary if enabled
+        if self.evidence_memory and steps:
+            evidence_json = self._build_evidence_summary(steps)
+            thoughts += (
+                f"{self.tags['ai_tag_end']}"
+                f"{self.tags['user_tag_start']}"
+                f"Clinical evidence gathered so far:\n{evidence_json}"
+                f"{self.tags['user_tag_end']}"
+                f"{self.tags['ai_tag_start']}"
+                f"Thought:"
+            )
+
         return " " + thoughts.strip()
 
     def _build_scratchpad_plain(
@@ -372,7 +429,15 @@ class TreeOfThoughtsRunner:
 
     def _force_finish(self, state: ToTState, patient_input: str) -> ToTState:
         """Force the LLM to produce a final diagnosis from the current state."""
-        scratchpad = self._build_scratchpad(state.intermediate_steps)
+        if self.evidence_memory and state.intermediate_steps:
+            # Use clean evidence JSON instead of full scratchpad
+            evidence_json = self._build_evidence_summary(state.intermediate_steps)
+            scratchpad = (
+                f" Clinical evidence gathered:\n{evidence_json}\n"
+                f"Thought:"
+            )
+        else:
+            scratchpad = self._build_scratchpad(state.intermediate_steps)
         # Append instruction to diagnose
         scratchpad += (
             f"{self.tags['ai_tag_end']}"
@@ -428,6 +493,7 @@ def build_tot_runner(
     annotate_clinical=False,
     patient_simulator=None,
     cardiac_tools=False,
+    evidence_memory=False,
     # ToT-specific params
     tot_n_generate=10,
     tot_breadth=3,
@@ -557,4 +623,5 @@ def build_tot_runner(
         temperature=tot_temperature,
         eval_temperature=tot_eval_temperature,
         patient_simulator=patient_simulator,
+        evidence_memory=evidence_memory,
     )

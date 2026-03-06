@@ -35,6 +35,7 @@ save_probabilities: False
 annotate_clinical: False
 cardiac_tools: False
 patient_simulator: True
+evidence_memory: False
 
 anthropic_api_key:
 vllm_base_url:

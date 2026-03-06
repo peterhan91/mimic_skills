@@ -494,6 +494,7 @@ class ClinicalEvoTest:
             f"local_logging_dir={self.results_dir}",
             "summarize=True",
             f"annotate_clinical={self.args.annotate_clinical}",
+            f"evidence_memory={self.args.evidence_memory}",
             f"run_descr={descr}",
         ]
         if self.args.patient_simulator.lower() == "true":
@@ -929,6 +930,7 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
                 "model": self.args.model,
                 "evolver_model": self.args.evolver_model,
                 "annotate_clinical": self.args.annotate_clinical,
+                "evidence_memory": self.args.evidence_memory,
                 "patient_simulator": self.args.patient_simulator,
                 "exploration_constant": self.args.exploration_constant,
                 "depth_constant": self.args.depth_constant,
@@ -996,6 +998,7 @@ Output ONLY the skill content in markdown format. No preamble or explanation."""
         logger.info(f"  Model:            {self.args.model}")
         logger.info(f"  Evolver:          {self.args.evolver_model}")
         logger.info(f"  Annotate clinical:{self.args.annotate_clinical}")
+        logger.info(f"  Evidence memory:  {self.args.evidence_memory}")
         logger.info(f"  Patient simulator:{self.args.patient_simulator}")
         logger.info(f"  UCB c={self.args.exploration_constant}, alpha={self.args.depth_constant}")
         logger.info(f"  Drop threshold:   {self.args.drop_threshold}")
@@ -1251,6 +1254,11 @@ def main():
     parser.add_argument(
         "--annotate-clinical", type=str, default="True",
         help="Enable clinical lab annotations (default: True)"
+    )
+    parser.add_argument(
+        "--evidence-memory", type=str, default="False",
+        help="Enable structured evidence memory: agent sees clean JSON of gathered "
+             "evidence instead of noisy scratchpad (default: False)"
     )
     parser.add_argument(
         "--patient-simulator", type=str, default="True",

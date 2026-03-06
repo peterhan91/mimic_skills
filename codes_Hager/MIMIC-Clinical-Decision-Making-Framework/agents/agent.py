@@ -1,3 +1,4 @@
+import json
 import pickle
 from typing import List, Tuple, Union, Dict, Any
 from hashlib import sha256
@@ -65,6 +66,7 @@ class CustomZeroShotAgent(ZeroShotAgent):
     max_context_length: int
     tags: Dict[str, str]
     summarize: bool
+    evidence_memory: bool = False
 
     class Config:
         arbitrary_types_allowed = True
@@ -84,6 +86,54 @@ class CustomZeroShotAgent(ZeroShotAgent):
         full_inputs = {**kwargs, **new_inputs}
         return full_inputs
 
+    def _build_evidence_summary(
+        self, intermediate_steps: List[Tuple[AgentAction, str]]
+    ) -> str:
+        """Build structured evidence JSON from tool observations only.
+
+        Stores raw observations — no reasoning, no differentials.
+        Deduplicates repeated observations.
+        """
+        evidence = {}
+        for action, observation in intermediate_steps:
+            tool = action.tool
+            obs = observation.strip()
+            if not obs or tool not in self.allowed_tools:
+                continue
+            if tool == "Physical Examination":
+                evidence["physical_exam"] = obs
+            elif tool == "Laboratory Tests":
+                evidence.setdefault("labs", [])
+                if obs not in evidence["labs"]:
+                    evidence["labs"].append(obs)
+            elif tool == "Imaging":
+                evidence.setdefault("imaging", [])
+                if obs not in evidence["imaging"]:
+                    evidence["imaging"].append(obs)
+            elif tool == "ECG":
+                evidence.setdefault("ecg", [])
+                if obs not in evidence["ecg"]:
+                    evidence["ecg"].append(obs)
+            elif tool == "Echocardiogram":
+                evidence.setdefault("echocardiogram", [])
+                if obs not in evidence["echocardiogram"]:
+                    evidence["echocardiogram"].append(obs)
+            elif tool == "Ask Patient":
+                evidence.setdefault("patient_responses", [])
+                if obs not in evidence["patient_responses"]:
+                    evidence["patient_responses"].append(obs)
+            elif tool == "Diagnostic Criteria":
+                evidence.setdefault("diagnostic_criteria", [])
+                if obs not in evidence["diagnostic_criteria"]:
+                    evidence["diagnostic_criteria"].append(obs)
+        return json.dumps(evidence, indent=2)
+
+    def _calc_tokens(self, thoughts, input_text):
+        return calculate_num_tokens(
+            self.llm_chain.llm.tokenizer,
+            [self.llm_chain.prompt.format(input=input_text, agent_scratchpad=thoughts)],
+        )
+
     # Construct the running thoughts and observations of the model. Summarize the convo if we hit our token limit
     def _construct_scratchpad(
         self, intermediate_steps: List[Tuple[AgentAction, str]], **kwargs: Any
@@ -93,33 +143,27 @@ class CustomZeroShotAgent(ZeroShotAgent):
         for action, observation in intermediate_steps:
             thoughts += action.log
             thoughts += f"{self.tags['ai_tag_end']}{self.tags['user_tag_start']}{self.observation_prefix}{observation.strip()}{self.tags['user_tag_end']}{self.tags['ai_tag_start']}{self.llm_prefix}"
-        if (
-            calculate_num_tokens(
-                self.llm_chain.llm.tokenizer,
-                [
-                    self.llm_chain.prompt.format(
-                        input=kwargs["input"],
-                        agent_scratchpad=thoughts,
-                    )
-                ],
-            )
-            >= self.max_context_length - 100
-        ) and self.summarize:
-            thoughts = self._summarize_steps(intermediate_steps)
 
-        # Worst worst case, we are still over or close to the limit even after summarizing and thus should truncate and force a diagnosis
-        if (
-            calculate_num_tokens(
-                self.llm_chain.llm.tokenizer,
-                [
-                    self.llm_chain.prompt.format(
-                        input=kwargs["input"],
-                        agent_scratchpad=thoughts,
-                    )
-                ],
-            )
-            >= self.max_context_length - 100
-        ):
+        # Build evidence summary if enabled
+        evidence_json = None
+        compressed = False
+        if self.evidence_memory and intermediate_steps:
+            evidence_json = self._build_evidence_summary(intermediate_steps)
+
+        # Tier 1: context overflow — compress
+        if self._calc_tokens(thoughts, kwargs["input"]) >= self.max_context_length - 100:
+            if self.evidence_memory and evidence_json:
+                # Replace noisy scratchpad with clean evidence (no LLM call)
+                thoughts = (
+                    f"Clinical evidence gathered:\n{evidence_json}\n"
+                    f"{self.llm_prefix}"
+                )
+                compressed = True
+            elif self.summarize:
+                thoughts = self._summarize_steps(intermediate_steps)
+
+        # Tier 2: still over limit — truncate and force diagnosis
+        if self._calc_tokens(thoughts, kwargs["input"]) >= self.max_context_length - 100:
             prompt_and_input_tokens = calculate_num_tokens(
                 self.llm_chain.llm.tokenizer,
                 [
@@ -147,6 +191,18 @@ class CustomZeroShotAgent(ZeroShotAgent):
                     self.max_context_length - prompt_and_input_tokens - 100,
                 )  # give yourself 100 tokens for diagnosis and treatment and tags
             thoughts += f'{self.tags["ai_tag_end"]}{self.tags["user_tag_start"]}Provide a Final Diagnosis and Treatment.{self.tags["user_tag_end"]}{self.tags["ai_tag_start"]}Final'
+
+        # Normal operation with evidence memory: append evidence at end
+        # (skip if already compressed — evidence is already the scratchpad)
+        elif self.evidence_memory and evidence_json and not compressed:
+            thoughts += (
+                f"{self.tags['ai_tag_end']}"
+                f"{self.tags['user_tag_start']}"
+                f"Clinical evidence gathered so far:\n{evidence_json}"
+                f"{self.tags['user_tag_end']}"
+                f"{self.tags['ai_tag_start']}"
+                f"{self.llm_prefix}"
+            )
 
         # Also return kwargs so if we edited input, the change is propagated
         return " " + thoughts.strip(), kwargs
@@ -262,6 +318,7 @@ def build_agent_executor_ZeroShot(
     annotate_clinical=False,
     patient_simulator=None,
     cardiac_tools=False,
+    evidence_memory=False,
 ):
     with open(lab_test_mapping_path, "rb") as f:
         lab_test_mapping_df = pickle.load(f)
@@ -374,6 +431,7 @@ def build_agent_executor_ZeroShot(
         tags=tags,
         lab_test_mapping_df=lab_test_mapping_df,
         summarize=summarize,
+        evidence_memory=evidence_memory,
     )
 
     # Init agent executor

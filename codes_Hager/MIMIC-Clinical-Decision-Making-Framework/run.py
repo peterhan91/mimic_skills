@@ -140,6 +140,8 @@ def run(args: DictConfig):
         run_name += "_PATSIM"
     if args.get("cardiac_tools"):
         run_name += "_CARDIAC"
+    if args.get("evidence_memory"):
+        run_name += "_EVMEM"
     if args.get("skill_path"):
         skill_name = os.path.basename(args.skill_path).replace(".md", "")
         run_name += f"_SKILL_{skill_name}"
@@ -211,6 +213,7 @@ def run(args: DictConfig):
                 annotate_clinical=args.get("annotate_clinical", False),
                 patient_simulator=patient_sim,
                 cardiac_tools=args.get("cardiac_tools", False),
+                evidence_memory=args.get("evidence_memory", False),
                 tot_n_generate=args.get("tot_n_generate", 3),
                 tot_breadth=args.get("tot_breadth", 2),
                 tot_max_depth=args.get("tot_max_depth", 20),
@@ -237,6 +240,7 @@ def run(args: DictConfig):
                 annotate_clinical=args.get("annotate_clinical", False),
                 patient_simulator=patient_sim,
                 cardiac_tools=args.get("cardiac_tools", False),
+                evidence_memory=args.get("evidence_memory", False),
             )
             result = agent_executor({"input": patient_input})
         append_to_pickle_file(results_log_path, {_id: result})
