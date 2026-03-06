@@ -27,6 +27,8 @@ from agents.prompts import (
     ASK_PATIENT_TOOL_USE_EXAMPLE,
     ECG_TOOL_DESCR,
     ECHO_TOOL_DESCR,
+    ECG_TOOL_USE_EXAMPLE,
+    ECHO_TOOL_USE_EXAMPLE,
 )
 from agents.tot_prompts import TOT_EVALUATION_PROMPT
 from tools.Tools import (
@@ -462,6 +464,8 @@ def build_tot_runner(
         tools_list.append(DoEchocardiogram(action_results=patient))
         add_tool_descr += ECG_TOOL_DESCR
         add_tool_descr += ECHO_TOOL_DESCR
+        add_tool_use_examples += ECG_TOOL_USE_EXAMPLE
+        add_tool_use_examples += ECHO_TOOL_USE_EXAMPLE
 
     if patient_simulator:
         from tools.patient_simulator import AskPatient

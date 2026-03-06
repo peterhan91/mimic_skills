@@ -48,6 +48,18 @@ ECG_TOOL_DESCR = "\nECG: Retrieve the earliest available ECG report. Only use wh
 
 ECHO_TOOL_DESCR = "\nEchocardiogram: Retrieve the earliest available echocardiogram (Echo) report. Only use when clinically indicated for cardiac evaluation."
 
+ECG_TOOL_USE_EXAMPLE = """
+
+Thought: The patient presents with chest pain and diaphoresis. I should obtain an ECG to check for ST-segment changes.
+Action: ECG
+Observation: ..."""
+
+ECHO_TOOL_USE_EXAMPLE = """
+
+Thought: I need to assess cardiac structure and function. I should obtain an echocardiogram.
+Action: Echocardiogram
+Observation: ..."""
+
 ASK_PATIENT_TOOL_DESCR = "\nAsk Patient: Ask the patient a question about their symptoms, medical history, medications, family history, or social habits. The question must be specified in the 'Action Input' field."
 
 ASK_PATIENT_TOOL_USE_EXAMPLE = """

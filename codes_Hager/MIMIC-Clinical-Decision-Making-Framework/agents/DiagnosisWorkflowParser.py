@@ -125,6 +125,26 @@ class DiagnosisWorkflowParser(AgentOutputParser):
             # If no explicit action is given, return invalid tool. Completely free-text parsing is too instable
             raise InvalidActionError(self.llm_output, self.custom_parsings)
 
+        # Check cardiac tool aliases BEFORE dash-splitting (e.g. "12-lead ECG"
+        # would be broken by dash split into "12" + "lead ECG").
+        # Must also precede fuzzy matching to prevent "Electrocardiogram" → "Echocardiogram".
+        _action_lower = self.action.lower().strip()
+        if _action_lower in ("ekg", "electrocardiogram", "electrocardiography",
+                             "12-lead ecg", "12 lead ecg", "perform ecg",
+                             "repeat ecg", "stat ecg"):
+            self.action = "ECG"
+            self.custom_parsings += 1
+            return
+        elif _action_lower in ("echo", "cardiac echo", "tte",
+                               "transthoracic echocardiogram",
+                               "transthoracic echocardiography",
+                               "tee", "transesophageal echocardiogram",
+                               "cardiac ultrasound", "heart ultrasound",
+                               "perform echocardiogram", "repeat echocardiogram"):
+            self.action = "Echocardiogram"
+            self.custom_parsings += 1
+            return
+
         # If action input is provided in action (e.g. after a dash)
         if "-" in self.action:
             split = self.action.split("-")
@@ -133,10 +153,11 @@ class DiagnosisWorkflowParser(AgentOutputParser):
             self.custom_parsings += 1
 
         # Check for special cases
-        if "labs" in self.action.lower():
+        _action_lower = self.action.lower()
+        if "labs" in _action_lower:
             self.action = "Laboratory Tests"
             self.custom_parsings += 1
-        elif "blood work" in self.action.lower():
+        elif "blood work" in _action_lower:
             self.action = "Laboratory Tests"
             self.custom_parsings += 1
 
@@ -219,8 +240,9 @@ class DiagnosisWorkflowParser(AgentOutputParser):
                 # Should never happen
                 raise NotImplementedError
 
-        # Imaging and laboratory tests require action inputs. If not provided, return invalid action
-        if not self.action_input:
+        # Imaging and laboratory tests require action inputs. If not provided, return invalid action.
+        # Exception: if action was redirected to ECG/Echocardiogram (standalone, no input needed).
+        if not self.action_input and self.action not in ("ECG", "Echocardiogram"):
             raise InvalidActionError(self.llm_output, self.custom_parsings)
 
     def parse_action_input_from_llm_output(self) -> bool:
@@ -272,8 +294,22 @@ class DiagnosisWorkflowParser(AgentOutputParser):
                 frequent_region = UNIQUE_MODALITY_TO_ORGAN_MAPPING[frequent_modality]
                 frequent_region_count = 1
 
-        # If no modality or region is found, return invalid tool
+        # If no modality or region is found, check if the agent meant a
+        # standalone cardiac tool (ECG / Echocardiogram) via the Imaging tool.
+        # e.g. "Action: Imaging\nAction Input: Echocardiogram of the heart"
         if frequent_region_count == 0 or frequent_modality_count == 0:
+            _inp_lower = self.action_input.lower() if isinstance(self.action_input, str) else ""
+            if any(kw in _inp_lower for kw in ("echocardiogra", "echo", "tte", "tee",
+                                                "cardiac ultrasound")):
+                self.action = "Echocardiogram"
+                self.action_input = None
+                self.custom_parsings += 1
+                return
+            if any(kw in _inp_lower for kw in ("ecg", "ekg", "electrocardiogra")):
+                self.action = "ECG"
+                self.action_input = None
+                self.custom_parsings += 1
+                return
             raise InvalidActionError(self.llm_output, self.custom_parsings)
         else:
             self.action_input = {
