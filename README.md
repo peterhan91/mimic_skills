@@ -327,6 +327,29 @@ better-structured clinical workflows, not extended chain-of-thought.
 
 ---
 
+## Next Steps
+
+- [ ] **Chest tool hallucination**: Skills barely reduce invalid tool calls on
+  cardiac pathologies (32.1% to 31.4%). Investigate ECG/Echocardiogram misuse
+  patterns and add targeted tool-usage guidance to the Evolver prompt.
+- [ ] **Treatment content accuracy**: Treatment *parsing* improved (76% to 95%)
+  but Treatment *Match* (correct drug/procedure content) regressed during
+  evolution. Evolver now has finding-driven drug guidance — validate this fixes
+  the regression.
+- [ ] **Structured evidence memory**: `evidence_memory=True` stores raw tool
+  observations as a JSON dict (no reasoning, no differentials) for high
+  signal-to-noise diagnosis. Run ablation: evidence_memory ON vs OFF.
+- [ ] **Cross-model skill transfer**: Test evolved skills on additional student
+  models via vLLM: MedGemma-27B (medical domain), Llama-3.3-70B-FP8 (general),
+  gpt-oss-120B (reasoning MoE). Configs and vLLM flags ready.
+- [ ] **Re-run mt=4096 with mature skill**: Current mt=4096 results used early
+  skills (ep1/ep4) that lack PE-first enforcement. Re-test with ep8+ skill for
+  fair comparison with other mt settings.
+- [ ] **ToT agent**: Tree of Thoughts agent with breadth-first search over
+  clinical reasoning paths. Evolution infrastructure supports `--agent ToT`.
+
+---
+
 ## Repository Structure
 
 ```
