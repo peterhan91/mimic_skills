@@ -834,11 +834,16 @@ The agent has these tools: `Physical Examination`, `Laboratory Tests`, `Imaging`
             cardiac_tools_note = "\n- **When to use ECG and Echocardiogram** — ECG should be ordered early for any cardiac-sounding presentation; Echocardiogram for suspected structural/valvular disease or heart failure"
             treatment_guidance = (
                 "(a) emergent percutaneous or surgical intervention vs conservative management — describe the type of intervention without naming the specific diagnosis, "
-                "(b) anticoagulation — explicitly state the drug class AND specific agent (e.g., 'heparin anticoagulation', 'aspirin and clopidogrel dual antiplatelet therapy', 'enoxaparin'), "
-                "(c) medications — name specific drugs: beta-blocker (metoprolol), statin (atorvastatin), ACE inhibitor, nitroglycerin, diuretic (furosemide), "
-                "(d) supportive care — explicitly state: oxygen supplementation, IV fluid resuscitation, continuous cardiac monitoring. "
-                "CRITICAL: The agent MUST use specific drug names (aspirin, heparin, metoprolol, statin, furosemide, ACE inhibitor) — vague terms like 'cardiac monitoring' or 'conservative management' score ZERO. "
-                "Do NOT name diagnosis-specific procedures — use general categories like 'revascularization', 'structural intervention', or 'clot-dissolving therapy'"
+                "(b) medication therapy MATCHED TO FINDINGS — choose drugs appropriate to the identified pathophysiology: "
+                "anticoagulation (heparin, enoxaparin) if thrombotic cause suspected; "
+                "antiplatelet therapy (aspirin, clopidogrel) if ischemic cause; "
+                "diuretics (furosemide) if volume overload/fluid retention; "
+                "beta-blocker (metoprolol) if rate/rhythm control needed; "
+                "ACE inhibitor if afterload reduction indicated; "
+                "statin (atorvastatin) if atherosclerotic etiology. "
+                "Do NOT recommend all drugs for all patients — match treatment to the specific clinical findings, "
+                "(c) supportive care — explicitly state: oxygen supplementation, IV fluid resuscitation, continuous cardiac monitoring. "
+                "CRITICAL: Use specific drug names, not vague terms. But only recommend drugs justified by the patient's findings"
             )
         else:
             condition_label = "acute abdominal pain"
