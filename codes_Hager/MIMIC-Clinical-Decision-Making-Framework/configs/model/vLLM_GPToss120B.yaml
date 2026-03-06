@@ -1,0 +1,27 @@
+# @package _global_
+# gpt-oss-120b: 120B MoE (5.1B active), fits single A100/GH200
+# Requires vLLM >= 0.10.2 (standard release, no custom wheel)
+# Recommend: --async-scheduling for best performance
+defaults:
+  - _self_
+
+openai_api_key:
+vllm_base_url: "http://localhost:8000/v1"
+model_name: "openai/gpt-oss-120b"
+max_context_length: 32768
+exllama: False
+
+# GPT-oss uses Harmony format; for /v1/completions we use ChatML-style tokens
+# Verify against tokenizer_config.json if issues arise
+system_tag_start: "<|im_start|>system\n"
+system_tag_end: "<|im_end|>\n"
+
+user_tag_start: "<|im_start|>user\n"
+user_tag_end: "<|im_end|>\n"
+
+ai_tag_start: "<|im_start|>assistant\n"
+ai_tag_end: "<|im_end|>\n"
+
+stop_words:
+ - "<|im_end|>"
+ - "<|endoftext|>"

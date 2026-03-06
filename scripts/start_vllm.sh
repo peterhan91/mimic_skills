@@ -12,6 +12,9 @@ set -euo pipefail
 #   bash scripts/start_vllm.sh --qwen35     # Qwen3.5-35B-A3B (text-only)
 #   bash scripts/start_vllm.sh --qwen35-27b # Qwen3.5-27B dense (text-only, with MTP)
 #   bash scripts/start_vllm.sh --qwen3next  # Qwen3-Next-80B-A3B-FP8 (with MTP)
+#   bash scripts/start_vllm.sh --medgemma   # MedGemma-27B (Gemma 3, medical)
+#   bash scripts/start_vllm.sh --llama33-fp8 # Llama-3.3-70B-FP8 (NVIDIA FP8)
+#   bash scripts/start_vllm.sh --gptoss     # gpt-oss-120B MoE (fits single GPU, vLLM>=0.10.2)
 #   bash scripts/start_vllm.sh --tool-call  # enable tool calling (for SDK)
 #   bash scripts/start_vllm.sh --qwen35 --tool-call  # combine flags
 #
@@ -32,18 +35,40 @@ VLLM_PORT=8000
 USE_QWEN35=false
 USE_QWEN35_27B=false
 USE_QWEN3NEXT=false
+USE_MEDGEMMA=false
+USE_LLAMA33_FP8=false
+USE_GPTOSS=false
 TOOL_CALL=false
 for arg in "$@"; do
     case "$arg" in
-        --qwen35)      USE_QWEN35=true ;;
-        --qwen35-27b)  USE_QWEN35_27B=true ;;
-        --qwen3next)   USE_QWEN3NEXT=true ;;
-        --tool-call)   TOOL_CALL=true ;;
+        --qwen35)        USE_QWEN35=true ;;
+        --qwen35-27b)    USE_QWEN35_27B=true ;;
+        --qwen3next)     USE_QWEN3NEXT=true ;;
+        --medgemma)      USE_MEDGEMMA=true ;;
+        --llama33-fp8)   USE_LLAMA33_FP8=true ;;
+        --gptoss)        USE_GPTOSS=true ;;
+        --tool-call)     TOOL_CALL=true ;;
     esac
 done
 
 # Model-specific configuration
-if $USE_QWEN3NEXT; then
+if $USE_GPTOSS; then
+    VLLM_MODEL="openai/gpt-oss-120b"
+    VLLM_MAX_LEN=32768
+    # 120B MoE (5.1B active) fits single A100/GH200. Requires vLLM >= 0.10.2
+    SIF="${MIMIC_SIF_GPTOSS:-${MIMIC_SIF_QWEN35:-/cbica/home/hanti/containers/vllm-openai_nightly.sif}}"
+    OVERLAY="${MIMIC_OVERLAY_GPTOSS:-${MIMIC_OVERLAY_QWEN35:-/cbica/home/hanti/containers/vllm_overlay_qwen35.img}}"
+elif $USE_LLAMA33_FP8; then
+    VLLM_MODEL="nvidia/Llama-3.3-70B-Instruct-FP8"
+    VLLM_MAX_LEN=32768
+    SIF="${MIMIC_SIF_QWEN35:-/cbica/home/hanti/containers/vllm-openai_nightly.sif}"
+    OVERLAY="${MIMIC_OVERLAY_QWEN35:-/cbica/home/hanti/containers/vllm_overlay_qwen35.img}"
+elif $USE_MEDGEMMA; then
+    VLLM_MODEL="google/medgemma-27b-text-it"
+    VLLM_MAX_LEN=32768
+    SIF="${MIMIC_SIF_QWEN35:-/cbica/home/hanti/containers/vllm-openai_nightly.sif}"
+    OVERLAY="${MIMIC_OVERLAY_QWEN35:-/cbica/home/hanti/containers/vllm_overlay_qwen35.img}"
+elif $USE_QWEN3NEXT; then
     VLLM_MODEL="Qwen/Qwen3-Next-80B-A3B-Instruct-FP8"
     VLLM_MAX_LEN=32768
     SIF="${MIMIC_SIF_QWEN35:-/cbica/home/hanti/containers/vllm-openai_nightly.sif}"
@@ -71,6 +96,8 @@ VLLM_EXTRA_ARGS=""
 if $TOOL_CALL; then
     if $USE_QWEN35 || $USE_QWEN35_27B; then
         VLLM_EXTRA_ARGS="--enable-auto-tool-choice --tool-call-parser qwen3_coder"
+    elif $USE_GPTOSS; then
+        VLLM_EXTRA_ARGS="--enable-auto-tool-choice --tool-call-parser openai"
     else
         VLLM_EXTRA_ARGS="--enable-auto-tool-choice --tool-call-parser hermes"
     fi
@@ -84,18 +111,36 @@ if $USE_QWEN35 || $USE_QWEN35_27B; then
         --language-model-only"
 fi
 
+# Llama-3.3-70B-FP8: async-scheduling per official vLLM recipe
+if $USE_LLAMA33_FP8; then
+    VLLM_EXTRA_ARGS="$VLLM_EXTRA_ARGS --async-scheduling"
+fi
+
+# gpt-oss: async-scheduling + Hopper-optimized config (per official recipe)
+if $USE_GPTOSS; then
+    VLLM_EXTRA_ARGS="$VLLM_EXTRA_ARGS \
+        --async-scheduling \
+        --no-enable-prefix-caching \
+        --max-cudagraph-capture-size 2048"
+fi
+
 # MTP speculative decoding (Qwen3-Next only; Qwen3.5-27B OOMs with MTP on single 95GB GPU)
 if $USE_QWEN3NEXT; then
     VLLM_EXTRA_ARGS="$VLLM_EXTRA_ARGS \
         --speculative-config {\"method\":\"qwen3_next_mtp\",\"num_speculative_tokens\":2}"
 fi
 
-# GH200 performance tuning
-VLLM_EXTRA_ARGS="$VLLM_EXTRA_ARGS \
-    --enable-prefix-caching \
-    --enable-chunked-prefill \
-    --max-num-batched-tokens 16384 \
-    --kv-cache-dtype fp8_e4m3"
+# GH200 performance tuning (skip prefix-caching for gpt-oss which disables it)
+if ! $USE_GPTOSS; then
+    VLLM_EXTRA_ARGS="$VLLM_EXTRA_ARGS \
+        --enable-prefix-caching \
+        --enable-chunked-prefill \
+        --max-num-batched-tokens 16384 \
+        --kv-cache-dtype fp8_e4m3"
+else
+    VLLM_EXTRA_ARGS="$VLLM_EXTRA_ARGS \
+        --max-num-batched-tokens 8192"
+fi
 
 # Preflight
 [ -f "$SIF" ]     || { echo "ERROR: SIF not found: $SIF"; exit 1; }
@@ -130,7 +175,7 @@ if [ -d "$PROJECT/moe_configs" ]; then
 fi
 
 # Python binary: nightly SIF uses python3 (no python symlink)
-if $USE_QWEN35 || $USE_QWEN35_27B || $USE_QWEN3NEXT; then
+if $USE_QWEN35 || $USE_QWEN35_27B || $USE_QWEN3NEXT || $USE_MEDGEMMA || $USE_LLAMA33_FP8 || $USE_GPTOSS; then
     PYTHON_BIN="python3"
 else
     PYTHON_BIN="python"

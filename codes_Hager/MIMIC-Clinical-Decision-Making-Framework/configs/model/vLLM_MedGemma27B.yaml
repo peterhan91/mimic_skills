@@ -1,0 +1,22 @@
+# @package _global_
+defaults:
+  - _self_
+
+openai_api_key:
+vllm_base_url: "http://localhost:8000/v1"
+model_name: "google/medgemma-27b-text-it"
+max_context_length: 32768
+exllama: False
+
+system_tag_start: "<bos><start_of_turn>system\n"
+system_tag_end: "<end_of_turn>\n"
+
+user_tag_start: "<start_of_turn>user\n"
+user_tag_end: "<end_of_turn>\n"
+
+ai_tag_start: "<start_of_turn>model\n"
+ai_tag_end: "<end_of_turn>\n"
+
+stop_words:
+ - "<end_of_turn>"
+ - "<eos>"
