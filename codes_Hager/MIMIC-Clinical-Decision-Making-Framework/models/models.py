@@ -435,20 +435,40 @@ class CustomLLM(LLM):
 
         elif self.vllm_base_url:
             import requests
-            resp = requests.post(
-                f"{self.vllm_base_url}/completions",
-                json={
-                    "model": self.model_name,
-                    "prompt": prompt,
-                    "max_tokens": VLLM_MAX_TOKENS,
-                    "temperature": 0.0,
-                    "stop": STOP_WORDS + stop,
-                    "seed": self.seed,
-                },
-                timeout=120,
-            )
-            resp.raise_for_status()
-            output = _strip_think_blocks(resp.json()["choices"][0]["text"])
+            _effort = getattr(self, "reasoning_effort", None)
+            if _effort and _effort != "none":
+                # Reasoning model (e.g., gpt-oss): use chat completions API
+                messages = extract_sections(prompt, self.tags)
+                resp = requests.post(
+                    f"{self.vllm_base_url}/chat/completions",
+                    json={
+                        "model": self.model_name,
+                        "messages": messages,
+                        "max_tokens": VLLM_MAX_TOKENS,
+                        "temperature": 0.0,
+                        "reasoning_effort": _effort,
+                        "stop": STOP_WORDS + stop,
+                        "seed": self.seed,
+                    },
+                    timeout=300,
+                )
+                resp.raise_for_status()
+                output = resp.json()["choices"][0]["message"]["content"]
+            else:
+                resp = requests.post(
+                    f"{self.vllm_base_url}/completions",
+                    json={
+                        "model": self.model_name,
+                        "prompt": prompt,
+                        "max_tokens": VLLM_MAX_TOKENS,
+                        "temperature": 0.0,
+                        "stop": STOP_WORDS + stop,
+                        "seed": self.seed,
+                    },
+                    timeout=120,
+                )
+                resp.raise_for_status()
+                output = _strip_think_blocks(resp.json()["choices"][0]["text"])
 
         elif self.openai_api_key:
             messages = extract_sections(
@@ -610,20 +630,39 @@ class CustomLLM(LLM):
 
         elif self.vllm_base_url:
             import requests
-            resp = requests.post(
-                f"{self.vllm_base_url}/completions",
-                json={
-                    "model": self.model_name,
-                    "prompt": prompt,
-                    "max_tokens": VLLM_MAX_TOKENS,
-                    "temperature": temperature,
-                    "stop": STOP_WORDS + stop,
-                    "seed": None if temperature > 0 else self.seed,
-                },
-                timeout=120,
-            )
-            resp.raise_for_status()
-            output = _strip_think_blocks(resp.json()["choices"][0]["text"])
+            _effort = getattr(self, "reasoning_effort", None)
+            if _effort and _effort != "none":
+                messages = extract_sections(prompt, self.tags)
+                resp = requests.post(
+                    f"{self.vllm_base_url}/chat/completions",
+                    json={
+                        "model": self.model_name,
+                        "messages": messages,
+                        "max_tokens": VLLM_MAX_TOKENS,
+                        "temperature": temperature,
+                        "reasoning_effort": _effort,
+                        "stop": STOP_WORDS + stop,
+                        "seed": None if temperature > 0 else self.seed,
+                    },
+                    timeout=300,
+                )
+                resp.raise_for_status()
+                output = resp.json()["choices"][0]["message"]["content"]
+            else:
+                resp = requests.post(
+                    f"{self.vllm_base_url}/completions",
+                    json={
+                        "model": self.model_name,
+                        "prompt": prompt,
+                        "max_tokens": VLLM_MAX_TOKENS,
+                        "temperature": temperature,
+                        "stop": STOP_WORDS + stop,
+                        "seed": None if temperature > 0 else self.seed,
+                    },
+                    timeout=120,
+                )
+                resp.raise_for_status()
+                output = _strip_think_blocks(resp.json()["choices"][0]["text"])
 
         elif self.openai_api_key:
             messages = extract_sections(prompt, self.tags)
@@ -770,6 +809,13 @@ class CustomLLM(LLM):
         completions sharing the prompt KV cache — ~3.5x faster than n separate calls.
         """
         if self.vllm_base_url:
+            _effort = getattr(self, "reasoning_effort", None)
+            if _effort and _effort != "none":
+                # Reasoning models: sequential via chat completions
+                return [
+                    self.generate_with_temperature(prompt, stop=stop, temperature=temperature)
+                    for _ in range(n)
+                ]
             import requests
             resp = requests.post(
                 f"{self.vllm_base_url}/completions",

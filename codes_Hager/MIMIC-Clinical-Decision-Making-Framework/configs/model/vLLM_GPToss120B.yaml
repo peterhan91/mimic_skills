@@ -2,6 +2,7 @@
 # gpt-oss-120b: 120B MoE (5.1B active), fits single A100/GH200
 # Requires vLLM >= 0.10.2 (standard release, no custom wheel)
 # Recommend: --async-scheduling for best performance
+# reasoning_effort: low | medium | high (uses /v1/chat/completions)
 defaults:
   - _self_
 
@@ -10,9 +11,10 @@ vllm_base_url: "http://localhost:8000/v1"
 model_name: "openai/gpt-oss-120b"
 max_context_length: 32768
 exllama: False
+reasoning_effort: medium
 
-# GPT-oss uses Harmony format; for /v1/completions we use ChatML-style tokens
-# Verify against tokenizer_config.json if issues arise
+# GPT-oss uses Harmony format; chat completions apply template automatically
+# Tags still needed for prompt construction before extract_sections parses them
 system_tag_start: "<|im_start|>system\n"
 system_tag_end: "<|im_end|>\n"
 
