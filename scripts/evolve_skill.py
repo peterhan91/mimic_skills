@@ -335,9 +335,9 @@ The skill should be written as markdown with clear step-by-step instructions tha
 - When to do Physical Examination (should always be FIRST)
 - How to select labs based on exam findings (not shotgun ordering)
 - How to choose imaging modality based on suspected pathology location
-- When to recommend surgical vs conservative treatment — name the specific procedure (e.g., appendectomy, cholecystectomy, colectomy, ERCP)
+- When to recommend surgical vs conservative treatment — state 'surgical intervention' or 'operative management' when surgery is indicated, without naming the diagnosis-specific procedure
 - How to interpret lab values in context (normal labs don't rule out surgical conditions)
-- **How to recommend treatment** — ALWAYS include a Treatment section that explicitly states: (a) the specific surgical procedure if indicated, (b) 'antibiotics' if infection suspected, (c) ALL THREE supportive care components: 'IV fluid resuscitation', 'analgesia/pain management', AND 'monitoring'. CRITICAL: vague phrases like 'supportive care' or 'conservative management' without naming specifics score ZERO in evaluation"""
+- **How to recommend treatment** — ALWAYS include a Treatment section that explicitly states: (a) 'surgical intervention' if indicated (let the agent determine the specific procedure from clinical knowledge), (b) 'antibiotics' if infection suspected, (c) ALL THREE supportive care components: 'IV fluid resuscitation', 'analgesia/pain management', AND 'monitoring'. CRITICAL: vague phrases like 'supportive care' or 'conservative management' without naming specifics score ZERO in evaluation. Do NOT include diagnosis-specific procedure names in the skill."""
 
     if patient_simulator:
         prompt += """

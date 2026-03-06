@@ -18,9 +18,17 @@ procedure names that map 1:1 to a specific disease):
                      "bowel obstruction", "intestinal obstruction"
   pyelonephritis:    "acute pyelonephritis", "pyelonephritis"
 
+  cardiac procedures: "PCI", "CABG", "TAVR", "TAVI", "SAVR", "angioplasty",
+                     "coronary stent", "valve replacement", "valvuloplasty",
+                     "thrombolysis", "thrombolytic"
+  abdominal procs:   "colectomy", "sigmoidectomy", "ERCP",
+                     "sphincterotomy", "endoscopic retrograde cholangiopancreatography"
+
 What we do NOT mask (organ names / anatomical terms are needed for reasoning):
   "appendix", "gallbladder", "pancreas", "colon", "cecum", "diverticulum",
   "bile duct", "kidney", "ureter", "bowel", "intestine"
+  Drug names (aspirin, heparin, metoprolol, furosemide, etc.) are NOT masked
+  — they are used across many conditions and do not reveal diagnosis.
 
 Usage:
   # Sanitize a skill file (prints to stdout)
@@ -103,8 +111,23 @@ DISEASE_TERMS = sorted(
         "PCI",
         "coronary artery bypass",
         "CABG",
+        "coronary stent",
+        "angioplasty",
         "valve replacement",
         "valvuloplasty",
+        "TAVR",
+        "TAVI",
+        "SAVR",
+        "transcatheter aortic valve",
+        "thrombolysis",
+        "thrombolytic",
+        # Abdominal/biliary procedures (1:1 with diagnosis)
+        "colectomy",
+        "sigmoidectomy",
+        "ERCP",
+        "endoscopic retrograde cholangiopancreatography",
+        "endoscopic retrograde cholangiography",
+        "sphincterotomy",
     ],
     key=len,
     reverse=True,

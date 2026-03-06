@@ -833,22 +833,24 @@ The agent has these tools: `Physical Examination`, `Laboratory Tests`, `Imaging`
             pathology_examples = "myocardial infarction, pulmonary embolism, heart failure, valvular disease"
             cardiac_tools_note = "\n- **When to use ECG and Echocardiogram** — ECG should be ordered early for any cardiac-sounding presentation; Echocardiogram for suspected structural/valvular disease or heart failure"
             treatment_guidance = (
-                "(a) emergent intervention (PCI, angioplasty, CABG, thrombolysis, valve replacement/TAVR) vs conservative management — name the specific procedure, "
+                "(a) emergent percutaneous or surgical intervention vs conservative management — describe the type of intervention without naming the specific diagnosis, "
                 "(b) anticoagulation — explicitly state the drug class AND specific agent (e.g., 'heparin anticoagulation', 'aspirin and clopidogrel dual antiplatelet therapy', 'enoxaparin'), "
                 "(c) medications — name specific drugs: beta-blocker (metoprolol), statin (atorvastatin), ACE inhibitor, nitroglycerin, diuretic (furosemide), "
                 "(d) supportive care — explicitly state: oxygen supplementation, IV fluid resuscitation, continuous cardiac monitoring. "
-                "CRITICAL: The agent MUST use specific drug names (aspirin, heparin, metoprolol, statin, furosemide, ACE inhibitor) — vague terms like 'cardiac monitoring' or 'conservative management' score ZERO"
+                "CRITICAL: The agent MUST use specific drug names (aspirin, heparin, metoprolol, statin, furosemide, ACE inhibitor) — vague terms like 'cardiac monitoring' or 'conservative management' score ZERO. "
+                "Do NOT name diagnosis-specific procedures — use general categories like 'revascularization', 'structural intervention', or 'clot-dissolving therapy'"
             )
         else:
             condition_label = "acute abdominal pain"
             pathology_examples = "appendicitis, cholecystitis, diverticulitis, pancreatitis"
             cardiac_tools_note = ""
             treatment_guidance = (
-                "(a) surgical vs conservative management — name the specific procedure if surgical (e.g., 'appendectomy', 'cholecystectomy', 'colectomy', 'ERCP'), "
+                "(a) surgical vs conservative management — state 'surgical intervention' or 'operative management' when surgery is indicated, without naming the specific procedure, "
                 "(b) antibiotics — explicitly state 'antibiotics' or 'antibiotic therapy', "
                 "(c) supportive care — MUST explicitly include ALL THREE: 'IV fluid resuscitation', 'analgesia/pain management', AND 'monitoring'. "
                 "If drainage is needed, state 'percutaneous drainage of abscess'. "
-                "CRITICAL: The agent MUST use these exact terms — vague phrases like 'supportive care' or 'conservative management' without specifics score ZERO"
+                "CRITICAL: The agent MUST use these exact terms — vague phrases like 'supportive care' or 'conservative management' without specifics score ZERO. "
+                "Do NOT name diagnosis-specific procedures — the agent should determine the procedure from its own clinical knowledge"
             )
 
         prompt = f"""You are a clinical AI system optimizer. Your task is to analyze diagnostic agent trajectories and generate an improved clinical reasoning skill.
